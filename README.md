@@ -64,9 +64,12 @@ All of these are computed from the NASA tables or quoted from PSI records, never
 
 Requirements: **Python ≥ 3.10**, **Node ≥ 20**.
 
+**Windows:** double-click `setup.bat` once (installs everything, builds the database, runs the tests, builds the UI), then `start.bat` every time. After a `git pull`, run `rebuild_frontend.bat`.
+**macOS:** double-click `setup.command` once, then `start.command`.
+
 ```bash
 make setup      # venv + pip install + npm install
-make test       # 31 back-end tests (ETL, ranking criteria, export, assistant, API)
+make test       # back-end tests (ETL, ranking criteria, export, assistant, API)
 make api        # API on http://localhost:8000  (docs: /docs)
 # macOS: or just double-click setup.command once, then start.command
 make web        # UI on  http://localhost:5173  (second terminal)
