@@ -34,7 +34,7 @@ function Ask() {
     <section className="section" id="ask">
       <h2>Ask the evidence</h2>
       <p className="sub">
-        Answers are assembled only from PSI records, curated insights and numbers computed by FlameAtlas. Every
+        Answers are assembled only from PSI records, curated insights and numbers computed by Fire Lab. Every
         statement links to its source; questions outside the corpus are declined.
       </p>
       <div className="ask">

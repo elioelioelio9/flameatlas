@@ -1,5 +1,5 @@
 #!/bin/bash
-# FlameAtlas — publish the local Git repository to a new PRIVATE GitHub repo.
+# Fire Lab — publish the local Git repository to a new PRIVATE GitHub repo.
 trap 'echo; read -r -p "Appuie sur Entrée pour fermer cette fenêtre…" _' EXIT
 cd "$(dirname "$0")" || exit 1
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
@@ -35,7 +35,7 @@ if git remote get-url origin >/dev/null 2>&1; then
   git push -u origin main
 else
   gh repo create flameatlas --private --source . --remote origin --push \
-    --description "FlameAtlas — fire-safety evidence from NASA microgravity combustion data (NASA Space Apps 2026)"
+    --description "Fire Lab — fire-safety evidence from NASA microgravity combustion data (NASA Space Apps 2026)"
 fi
 echo
 read -r -p "Pseudo GitHub de ton coéquipier à inviter (Entrée pour passer) : " MATE

@@ -47,7 +47,7 @@ export default function Overview() {
         <div>
           <h1>How does fire behave when nothing rises?</h1>
           <p className="lede">
-            FlameAtlas turns NASA's microgravity combustion experiments into evidence for fire-safety decisions:
+            Fire Lab turns NASA's microgravity combustion experiments into evidence for fire-safety decisions:
             which results apply to your vehicle or Moon base, what the data really cover, and what is still unknown.
           </p>
           <div className="row">

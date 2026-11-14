@@ -44,7 +44,7 @@ export const api = {
     });
     if (!res.ok) throw new Error(`${res.status} export failed`);
     const cd = res.headers.get("content-disposition") ?? "";
-    const filename = /filename="([^"]+)"/.exec(cd)?.[1] ?? "flameatlas_extract.zip";
+    const filename = /filename="([^"]+)"/.exec(cd)?.[1] ?? "fire_lab_extract.zip";
     return { blob: await res.blob(), filename, rows: Number(res.headers.get("x-rows") ?? 0) };
   },
   scatter: (x: string, y: string, accs: string[], color = "accession") =>

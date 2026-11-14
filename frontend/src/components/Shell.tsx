@@ -4,7 +4,7 @@ import { NEED_LABEL, fmt } from "./ui";
 
 const NAV: { id: Route; label: string }[] = [
   { id: "mission", label: "Mission" },
-  { id: "firelab", label: "Fire lab" },
+  { id: "firelab", label: "Simulation" },
   { id: "knowledge", label: "Knowledge" },
   { id: "find", label: "Evidence" },
   { id: "map", label: "Coverage" },
@@ -27,7 +27,7 @@ export function TopNav() {
   const overlay = route === "mission" && !scrolled;
   return (
     <header className={`topnav ${overlay ? "over" : ""}`}>
-      <button className="wordmark" onClick={() => go("mission")}>FlameAtlas</button>
+      <button className="wordmark" onClick={() => go("mission")}>Fire Lab</button>
       <button className="menu-toggle tlink" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? "Close" : "Menu"}</button>
       <nav aria-label="Sections" className={open ? "open" : ""}>
         {NAV.map((it) => (
@@ -75,7 +75,7 @@ export function Footer() {
   return (
     <footer className="foot">
       <div>
-        <div className="wordmark static">FlameAtlas</div>
+        <div className="wordmark static">Fire Lab</div>
         <p className="small faint">Fire-safety evidence from NASA microgravity combustion data. NASA Space Apps Challenge 2026 · Flame in Freefall.</p>
       </div>
       <div className="small faint mono">

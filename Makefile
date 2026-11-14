@@ -1,4 +1,4 @@
-# FlameAtlas — common tasks. Run from the repository root.
+# Fire Lab — common tasks. Run from the repository root.
 PY ?= python3
 VENV = .venv
 BIN = $(VENV)/bin

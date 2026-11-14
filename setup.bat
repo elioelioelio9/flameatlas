@@ -1,8 +1,8 @@
 @echo off
-REM FlameAtlas - one-click setup for Windows (double-click in Explorer).
+REM Fire Lab - one-click setup for Windows (double-click in Explorer).
 setlocal
 cd /d "%~dp0"
-echo FlameAtlas setup - dossier: %CD%
+echo Fire Lab setup - dossier: %CD%
 
 set "PY="
 where py >nul 2>nul && set "PY=py -3"
@@ -38,7 +38,7 @@ popd
 if not exist .env copy .env.example .env >nul
 type nul > .venv\.req-stamp
 echo.
-echo OK - installation terminee. Lance start.bat pour ouvrir FlameAtlas.
+echo OK - installation terminee. Lance start.bat pour ouvrir Fire Lab.
 echo (Optionnel: mets ta cle ANTHROPIC_API_KEY dans le fichier .env pour des reponses redigees.)
 :end
 echo.

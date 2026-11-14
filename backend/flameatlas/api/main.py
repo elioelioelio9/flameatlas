@@ -1,4 +1,4 @@
-"""FlameAtlas REST API (FastAPI).
+"""Fire Lab REST API (FastAPI).
 
 Run:  uvicorn flameatlas.api.main:app --reload --port 8000     (from the backend/ folder)
 Docs: http://localhost:8000/docs
@@ -53,7 +53,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="FlameAtlas API",
+    title="Fire Lab API",
     version=__version__,
     description=("Evidence engine for spacecraft fire safety built on NASA Physical Sciences Informatics (PSI) "
                  "microgravity combustion data. Every record is traceable to its PSI file, row and DOI."),
@@ -216,7 +216,7 @@ def extract_preview(req: ExtractIn, limit: int = Query(100, le=1000)) -> dict[st
 def extract_export(req: ExtractIn) -> Response:
     with _LOCK:
         data, info = export_svc.build_zip(repo(), export_svc.ExtractRequest.from_dict(req.model_dump()))
-    name = "flameatlas_extract_" + ("_".join(info["accessions"][:4]) or "empty") + ".zip"
+    name = "fire_lab_extract_" + ("_".join(info["accessions"][:4]) or "empty") + ".zip"
     return Response(content=data, media_type="application/zip",
                     headers={"Content-Disposition": f'attachment; filename="{name}"', "X-Rows": str(info["n_rows"])})
 
@@ -391,7 +391,7 @@ def kg_obsidian_export() -> Response:
     _, _, obsidian = _kg()
     with _LOCK:
         data = obsidian.export_zip(repo().conn)
-    return Response(data, media_type="application/zip", headers={"content-disposition": 'attachment; filename="FlameAtlas-vault.zip"'})
+    return Response(data, media_type="application/zip", headers={"content-disposition": 'attachment; filename="Fire-Lab-vault.zip"'})
 
 
 @app.post("/api/kg/obsidian/sync", tags=["knowledge"])

@@ -369,7 +369,7 @@ export default function FireLab() {
       snapshot: () => { wantShot = true; },
       step: () => { sim.step(0.06); },
       clearProbe: () => { probe = null; probeMark.visible = false; probeHist.length = 0; },
-      probeCsv: () => download(`flameatlas_probe_${hab.id}.csv`, ["t_s,T_C,O2_pct,CO2_pct,smoke,speed_m_s", ...probeHist.map((h) => [h.t.toFixed(2), h.T.toFixed(2), h.o2.toFixed(3), h.co2.toFixed(4), h.smoke.toFixed(5), h.speed.toFixed(4)].join(","))].join("\n")),
+      probeCsv: () => download(`fire_lab_probe_${hab.id}.csv`, ["t_s,T_C,O2_pct,CO2_pct,smoke,speed_m_s", ...probeHist.map((h) => [h.t.toFixed(2), h.T.toFixed(2), h.o2.toFixed(3), h.co2.toFixed(4), h.smoke.toFixed(5), h.speed.toFixed(4)].join(","))].join("\n")),
     };
 
     const resize = () => {
@@ -631,7 +631,7 @@ export default function FireLab() {
       } else controls.update();
 
       composer.render();
-      if (wantShot) { wantShot = false; const a = document.createElement("a"); a.href = renderer.domElement.toDataURL("image/png"); a.download = `flameatlas_${hab.id}_t${sim.time.toFixed(0)}s.png`; a.click(); }
+      if (wantShot) { wantShot = false; const a = document.createElement("a"); a.href = renderer.domElement.toDataURL("image/png"); a.download = `fire_lab_${hab.id}_t${sim.time.toFixed(0)}s.png`; a.click(); }
 
       const lab = labelsRef.current;
       if (lab) {
@@ -712,7 +712,7 @@ export default function FireLab() {
     <div className="lab">
       <header className="lab-head">
         <div>
-          <p className="mono meta">Fire lab · {hab.place}</p>
+          <p className="mono meta">Simulation · {hab.place}</p>
           <h1>{hab.name}</h1>
           <p className="lede">{hab.note}</p>
         </div>
@@ -856,7 +856,7 @@ export default function FireLab() {
             </tbody>
           </table>
           <div className="row tight" style={{ marginTop: 14 }}>
-            <button className="tlink" onClick={() => sim && download(`flameatlas_${hab.id}_history.csv`, sim.historyCsv())}>Export history (CSV)</button>
+            <button className="tlink" onClick={() => sim && download(`fire_lab_${hab.id}_history.csv`, sim.historyCsv())}>Export history (CSV)</button>
             <button className="tlink" onClick={() => api.current?.snapshot()}>Save image (PNG)</button>
           </div>
         </div>

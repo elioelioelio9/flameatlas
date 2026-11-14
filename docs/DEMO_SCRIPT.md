@@ -4,8 +4,8 @@
 
 | Time | Screen | Voice-over / caption |
 |---|---|---|
-| 0–5 s | Mission control: rotate to the ISS, click it, list of experiments by rack | "NASA has burned things in space for decades. FlameAtlas puts all of it in one place." |
-| 5–14 s | Fire lab: preset *Earth reference* → Ignite (yellow plume, ceiling alarm 4 s) → preset *ISS, ventilation shut down* → Ignite (blue ball, self-extinguishes, no alarm) | "Without gravity, smoke doesn't rise and flames starve — unless air moves." |
+| 0–5 s | Mission control: rotate to the ISS, click it, list of experiments by rack | "NASA has burned things in space for decades. Fire Lab puts all of it in one place." |
+| 5–14 s | Simulation: preset *Earth reference* → Ignite (yellow plume, ceiling alarm 4 s) → preset *ISS, ventilation shut down* → Ignite (blue ball, self-extinguishes, no alarm) | "Without gravity, smoke doesn't rise and flames starve — unless air moves." |
 | 14–22 s | Preset *34 % O2 cabin, ventilation off* → the flame keeps burning; evidence panel: ACME BRE + "only 9 tests" | "Future Moon bases will breathe oxygen-rich air. There, cutting ventilation may not be enough — and NASA has almost no data." |
 | 22–27 s | Find evidence ranking + Extract ZIP | "Every result traces back to a NASA dataset, file and DOI." |
 | 27–30 s | Logo + "Making the next giant leap a safer one" | |

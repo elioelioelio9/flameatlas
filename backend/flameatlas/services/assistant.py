@@ -1,4 +1,4 @@
-"""'Ask FlameAtlas': grounded question answering over the PSI corpus.
+"""'Ask Fire Lab': grounded question answering over the PSI corpus.
 
 Pipeline: parse the question -> rank investigations (rules) -> retrieve passages (hybrid search)
 -> attach curated/computed insights and coverage facts -> answer.
@@ -23,7 +23,7 @@ OUT_OF_SCOPE = {
                           "lanceur", "booster"],
 }
 
-SYSTEM_PROMPT = """You are FlameAtlas, an assistant for spacecraft fire-safety engineers and researchers.
+SYSTEM_PROMPT = """You are Fire Lab, an assistant for spacecraft fire-safety engineers and researchers.
 You answer ONLY from the numbered sources provided (NASA PSI combustion investigations, curated insights
 and numbers computed by the application). Rules:
 - Cite every factual sentence with source tags like [S1] or [S2][S5]. Never cite a source you were not given.
@@ -156,7 +156,7 @@ def answer(repo: Repository, question: str, scenario: dict[str, Any] | None = No
     if oos:
         return {
             "answer": ("This question is about **" + oos + "**, which is outside the PSI combustion data used by "
-                       "FlameAtlas: the high velocities in rocket engines make that combustion effectively independent "
+                       "Fire Lab: the high velocities in rocket engines make that combustion effectively independent "
                        "of gravity, and PSI holds no propellant fire-safety investigations. Try a question about cabin "
                        "materials, extinction or smoke detection."),
             "mode": "out_of_scope", "sources": [], "warnings": [f"out of scope: {oos}"], "parsed": parse_query(question).to_dict(),
@@ -166,14 +166,14 @@ def answer(repo: Repository, question: str, scenario: dict[str, Any] | None = No
     if ctx["parsed"].get("gravity") in ("lunar", "martian"):
         warnings.append("Partial gravity: PSI holds microgravity data only — results are bounds, not lunar/martian values.")
     if not ctx["sources"] or not ctx["ranking"]["results"]:
-        return {"answer": "The PSI corpus indexed by FlameAtlas does not contain information that answers this question.",
+        return {"answer": "The PSI corpus indexed by Fire Lab does not contain information that answers this question.",
                 "mode": "no_evidence", "sources": [], "warnings": warnings, "parsed": ctx["parsed"]}
 
     mode, model = "extractive", None
     text = None
     if settings.active_llm != "none":
         src_block = "\n\n".join(
-            f"[{s['id']}] ({s['kind']}; {s['acronym'] or s['accession'] or 'FlameAtlas'}"
+            f"[{s['id']}] ({s['kind']}; {s['acronym'] or s['accession'] or 'Fire Lab'}"
             f"{'; DOI ' + s['doi'] if s.get('doi') else ''}) {s['title']}\n{s['text']}" for s in ctx["sources"])
         user = f"Question: {question}\n\nSources:\n{src_block}"
         try:

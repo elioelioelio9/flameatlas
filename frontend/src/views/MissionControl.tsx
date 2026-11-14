@@ -251,7 +251,7 @@ export default function MissionControl() {
         <div className="mc-title" style={{ opacity: selected ? 0 : 1 }}>
           <p className="mono meta">NASA Space Apps 2026 · Flame in Freefall</p>
           <h1>Fire behaves differently up there.</h1>
-          <p className="lede">Without gravity, hot gas doesn't rise. Flames turn spherical, starve on their own exhaust, or creep against the cabin airflow. FlameAtlas turns NASA's microgravity combustion data into fire-safety evidence for the station, the Moon and Mars.</p>
+          <p className="lede">Without gravity, hot gas doesn't rise. Flames turn spherical, starve on their own exhaust, or creep against the cabin airflow. Fire Lab turns NASA's microgravity combustion data into fire-safety evidence for the station, the Moon and Mars.</p>
           <div className="links">
             <button className="tlink strong" onClick={() => setSelected("iss")}>Start in the station</button>
             <button className="tlink" onClick={() => setSelected("moon")}>Moon base</button>
@@ -338,7 +338,7 @@ export default function MissionControl() {
             <h2>Take away buoyancy and a flame changes shape, colour and speed.</h2>
             <p>On Earth, hot combustion gas rises and pulls fresh air in below: the familiar teardrop. In orbit nothing rises. Oxygen only reaches the flame by slow diffusion — or by the station's ventilation. The flame becomes a dim blue sphere, and it can starve on its own exhaust.</p>
             <p>That changes the fire-safety rules written for Earth: which materials burn, how fast a fire spreads, how quickly a smoke detector sees it, and whether switching off the fans really puts it out.</p>
-            <button className="tlink" onClick={() => go("firelab")}>See it in the fire lab</button>
+            <button className="tlink" onClick={() => go("firelab")}>See it in the simulation</button>
           </div>
         </div>
 
@@ -360,7 +360,7 @@ export default function MissionControl() {
           <p className="mono meta">Destiny · ISS042-E-021318 · NASA</p>
           <h2>The modules we simulate.</h2>
           <p>Node 1, the US Lab and Node 2: a 2-metre square aisle lined with racks, joined by hatches, swept by cabin air. Start a fire on any rack and follow the heat, the oxygen and the smoke from module to module.</p>
-          <button className="tlink strong" onClick={() => go("firelab")}>Open the fire lab</button>
+          <button className="tlink strong" onClick={() => go("firelab")}>Open the simulation</button>
         </div>
       </section>
     </div>

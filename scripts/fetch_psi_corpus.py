@@ -26,7 +26,7 @@ ALWAYS = {"PSI-181", "PSI-108"}  # keyword matches kept to document the scope de
 
 
 def get(url: str, raw: bool = False):
-    req = urllib.request.Request(url, headers={"user-agent": "FlameAtlas/0.1 (NASA Space Apps 2026)"})
+    req = urllib.request.Request(url, headers={"user-agent": "FireLab/0.1 (NASA Space Apps 2026)"})
     with urllib.request.urlopen(req, timeout=60) as r:
         data = r.read().decode("utf-8")
     return data if raw else json.loads(data)

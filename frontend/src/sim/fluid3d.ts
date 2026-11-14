@@ -1,5 +1,5 @@
 /**
- * FlameAtlas habitat fire model — 3-D, low-Mach, on a uniform Cartesian grid with immersed solids.
+ * Fire Lab habitat fire model — 3-D, low-Mach, on a uniform Cartesian grid with immersed solids.
  *
  *   ∂u/∂t + (u·∇)u = −∇p/ρ + g (ΔT/T) ŷ + f_vc                      (Boussinesq buoyancy, optional vorticity confinement)
  *   ∇·u = S,   S = (1/T) DT/Dt|_combustion                              (low-Mach thermal expansion of the burnt gas)

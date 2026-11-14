@@ -483,7 +483,7 @@ function EdgeView({ e, open }: { e: any; open: (id: string) => void }): ReactNod
       <p className="mono meta">relationship · {e.rel.replace(/_/g, " ")} · basis: {BASIS_LABEL[e.basis] ?? e.basis}</p>
       <h2><button className="inline-link" onClick={() => open(e.src)}>{e.src_node?.label}</button> <span className="faint">→ {e.rel.replace(/_/g, " ")} →</span> <button className="inline-link" onClick={() => open(e.dst)}>{e.dst_node?.label}</button></h2>
       <p className="muted">{e.definition}</p>
-      {e.basis === "inferred" && <p className="small">This link is <b>inferred</b> by FlameAtlas, not stated in a source.</p>}
+      {e.basis === "inferred" && <p className="small">This link is <b>inferred</b> by Fire Lab, not stated in a source.</p>}
       <div className="ki-rel">
         <h4>Evidence <span className="faint mono">{e.evidence.length}</span></h4>
         {e.evidence.length === 0 && <p className="small faint">Structural link from PSI metadata.</p>}
