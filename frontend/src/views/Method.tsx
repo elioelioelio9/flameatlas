@@ -32,20 +32,20 @@ export default function Method() {
         <p>
           The simulation solves the flow in four habitats on a uniform 3-D grid (16–20 cm cells): the ISS Node 1 → US Lab → Node 2
           (92 × 13 × 13 cells), a Moon base with lab, crew quarters and airlock (62 × 15 × 20), a two-deck Mars habitat
-          (30 × 24 × 30, round hull) and the ISS mockup at 1 g. Bulkheads, partitions, benches, bunks and decks are solid cells;
+          (30 × 24 × 30 cells of 20 cm, round hull) and a conical crew capsule on the launch pad at 1 g (32 × 21 × 32). Bulkheads, partitions, benches, bunks and decks are solid cells;
           hatches and doors are openings you can close. The 3-D interior is generated from the same grid, so what you see is what the flow sees.
         </p>
         <ul>
           <li><b>Flow</b>: ∂u/∂t + (u·∇)u = −∇p/ρ + g ΔT/T ŷ + f<sub>vc</sub>, with ∇·u = S. The source S = (1/T) DT/Dt of the burning cells is the
             low-Mach thermal expansion of burnt gas: it pushes air away from a flame even in orbit, where buoyancy is zero. Stam's stable-fluids scheme:
-            semi-Lagrangian momentum advection, red-black SOR pressure projection (warm-started), optional vorticity confinement f<sub>vc</sub>.
+            semi-Lagrangian momentum advection, pressure projection solved by conjugate gradients with a modified incomplete Cholesky preconditioner (warm-started), optional vorticity confinement f<sub>vc</sub>.
             With the fans off the cabin is sealed: the net expansion becomes a uniform pressure rise, reported in the diagnostics.</li>
           <li><b>Transport</b>: heat and smoke use second-order MacCormack advection with min/max clamping (sharper plumes), O₂ and CO₂ first-order;
             diffusivity grows as pressure falls (∝ p<sup>−½</sup>). Supply vents impose their airflow and fresh-air composition; return grilles are open boundaries.</li>
           <li><b>Fire</b>: up to four fuel panels on solid surfaces burn the O₂ above the material's limit (surface cell and the gas cell just off it), releasing
             heat, CO₂ and smoke. Burning spreads to neighbouring fuel cells, faster downstream and uphill, stops when a cell's fuel load is used, and goes out
             when the local burning rate stays below a critical value for 2 s (radiative-loss extinction). A CO₂ extinguisher dilutes O₂ and cools within ~0.5 m.</li>
-          <li><b>Checks</b>: the RMS of ∇·u − S after projection, the CFL number and the kinetic energy are shown live; vectors, streamlines (RK2) and the probe
+          <li><b>Checks</b>: the maximum of |∇·u − S| after projection, the CFL number and the kinetic energy are shown live; vectors, streamlines (RK2) and the probe
             interpolate the computed velocity field trilinearly — nothing is drawn that the solver did not compute.</li>
         </ul>
         <p>

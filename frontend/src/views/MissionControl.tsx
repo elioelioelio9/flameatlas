@@ -133,6 +133,23 @@ export default function MissionControl() {
       holder.add(w.group); parent.add(holder);
       minis.push({ id, w, holder, R, normal, scale });
     };
+    // the base is built on a flat tile: bend each piece onto the curved globe (drop it by the sagitta and tilt it
+    // to the local vertical) so landers, rockets and modules far from the centre touch the ground instead of floating
+    const qT = new THREE.Quaternion(), axT = new THREE.Vector3();
+    const conform = (m: (typeof minis)[number], undo: boolean) => {
+      const { w, R, scale: s } = m;
+      for (const c of w.group.children) {
+        if ((c as THREE.Points).isPoints || (c as THREE.Light).isLight || c.userData.tile) continue;
+        const u = c.userData;
+        if (undo) { if (u.cfDrop !== undefined) { c.position.y += u.cfDrop; c.quaternion.premultiply((u.cfQ as THREE.Quaternion).clone().invert()); } continue; }
+        if (c.position.x === 0 && c.position.y === 0 && c.position.z === 0) continue; // geometry already in tile coordinates
+        const dx = (c.position.x - w.anchor.x) * s, dz = (c.position.z - w.anchor.z) * s, rho = Math.min(R * 0.9, Math.hypot(dx, dz));
+        const drop = (R - Math.sqrt(R * R - rho * rho) - R * 0.003) / s;
+        u.cfDrop = drop; c.position.y -= drop;
+        if (rho > 1e-6) { axT.set(dz, 0, -dx).normalize(); qT.setFromAxisAngle(axT, Math.asin(rho / R)); } else qT.identity();
+        u.cfQ = qT.clone(); c.quaternion.premultiply(qT);
+      }
+    };
     addMini("earth", earthG, 2.2, [-0.3, 0.78, 0.55], 0.16);
     addMini("moon", moonG, 0.6, [-0.3, 0.8, 0.52], 0.045);
     addMini("mars", marsG, 0.95, [-0.28, 0.8, 0.53], 0.07);
@@ -210,7 +227,7 @@ export default function MissionControl() {
       if (sel !== "mars") mars.rotation.y += 0.01 * dt * k;
       if (!sel) issPivot.rotation.y += 0.02 * dt * k;
       issPivot.visible = sel !== "earth";
-      minis.forEach((m) => m.w.update(dt, t));
+      minis.forEach((m) => { conform(m, true); m.w.update(dt, t); conform(m, false); });
       lamp.intensity += ((sel && sel !== "iss" ? 2.2 : 0) - lamp.intensity) * Math.min(1, dt * 2.5);
       if (sel) {
         const m = siteOf(sel, want);
@@ -363,9 +380,34 @@ export default function MissionControl() {
             </div>
           </div>
         </div>
-        <div className="ed-grid two">
-          <Photo p={PHOTOS.bass2} />
-          <Photo p={PHOTOS.saffire} />
+        <div className="ed-rows">
+          <div className="ed-row">
+            <Photo p={PHOTOS.bass2} />
+            <div className="ed-text">
+              <p className="mono meta">How NASA studies it</p>
+              <h3>Small samples, burned on purpose, inside sealed hardware.</h3>
+              <p>Since the 1990s NASA has run hundreds of controlled burns in orbit: candles, fuel droplets, gas jets, acrylic slabs, cotton fabric. Most run in two pieces of hardware on the station, the Microgravity Science Glovebox and the Combustion Integrated Rack, where cameras and sensors record how fast the flame spreads, how hot it gets, and at what airflow or oxygen level it goes out.</p>
+              <p>BASS-II, above, burned a 4 mm acrylic slab in a duct with a slow, controlled airflow. The result that matters for a crew: in a slow breeze a flame in orbit can keep burning at oxygen levels where the same material self-extinguishes on Earth. Ground flammability tests can therefore rate a material as safe when it is not, in orbit.</p>
+            </div>
+          </div>
+          <div className="ed-row">
+            <Photo p={PHOTOS.saffire} />
+            <div className="ed-text">
+              <p className="mono meta">Why it matters</p>
+              <h3>A cabin fire is the one emergency with nowhere to go.</h3>
+              <p>On the pad in 1967, Apollo 1 burned in pure oxygen in seconds. In 1997, an oxygen-generator canister caught fire on Mir and filled the station with smoke. A crew in orbit, on the Moon or on Mars cannot step outside: the fire has to be detected early, starved or put out, and the air cleaned, in the same closed volume they breathe.</p>
+              <p>Small samples do not answer how large fires grow, so the Saffire series burned big sheets of fabric and plexiglass inside empty Cygnus cargo ships after they left the station. Those runs, with the glovebox and rack tests, are the data behind this site.</p>
+            </div>
+          </div>
+          <div className="ed-text ed-qs">
+            <p className="mono meta">The three questions this tool answers</p>
+            <dl>
+              <div><dt>Which materials can fly?</dt><dd>How easily a fabric, plastic or foam ignites and spreads flame at the gravity, oxygen and pressure of each habitat.</dd></div>
+              <div><dt>How do you put it out?</dt><dd>When a flame dies on its own (too little oxygen, too little flow, too much heat loss), and what turning off the fans or flooding the cabin with CO₂ does.</dd></div>
+              <div><dt>How do you see it early?</dt><dd>Without buoyancy, smoke does not rise to the ceiling. Where it goes depends on the ventilation, and that decides where a detector has to be.</dd></div>
+            </dl>
+            <p className="small faint">Moon and Mars gravity, and their planned low-pressure, oxygen-rich cabin air, have never been tested with fire. The simulation fills the gap with physics and says so wherever it does.</p>
+          </div>
         </div>
       </section>
 

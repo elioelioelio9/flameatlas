@@ -10,7 +10,8 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import { ALARM, CabinFire, MATERIALS, type FlameState, type Params } from "../sim/firesim";
 import { habitatById, type Habitat } from "../sim/habitats";
 import { useApp } from "../state";
-import { buildBackdrop, buildHabitatScene, buildIgnitionSource } from "./firelab/station";
+import { buildHabitatScene, buildIgnitionSource } from "./firelab/station";
+import { buildEnvironment } from "./firelab/environment";
 import { sliceMaterial, volumeMaterial } from "./firelab/shaders";
 import { cmap, cmapCss, CMAP_ID, type CMap } from "./firelab/colormaps";
 import { buildWorld, stageLights, WORLD_TEXT } from "../scenes/worlds";
@@ -52,7 +53,7 @@ interface Hud {
   div: number; it: number; cfl: number; ms: number; vmax: number; uref: number; range: [number, number] | null; sealed: boolean; rate: number;
 }
 const EMPTY: Hud = { t: 0, state: "idle", hrr: 0, minO2: 0.21, maxT: 0, area: 0, charred: 0, dp: 0, det: [], div: 0, it: 0, cfl: 0, ms: 0, vmax: 0, uref: 0.3, range: null, sealed: true, rate: 0 };
-type Live = { smoke: boolean; flames: boolean; vectors: boolean; density: number; slice: SliceField; axis: Axis; slicePos: number; volume: Volume; stream: boolean; speed: number; paused: boolean };
+type Live = { smoke: boolean; flames: boolean; vectors: boolean; density: number; slice: SliceField; axis: Axis; slicePos: number; volume: Volume; stream: boolean; speed: number; paused: boolean; marks: boolean; probe: boolean };
 type Api = { ignite: () => void; reset: () => void; door: (id: string, open: boolean) => void };
 
 function download(name: string, text: string) { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type: "text/csv" })); a.download = name; a.click(); }
@@ -98,9 +99,11 @@ export default function FireLab() {
 
   const simRef = useRef<CabinFire | null>(null);
   const paramsRef = useRef(params); paramsRef.current = params;
-  const live = useRef<Live>({ smoke, flames, vectors, density, slice, axis, slicePos, volume, stream, speed, paused });
+  const [marks, setMarks] = useState(false);
+  const [probe, setProbe] = useState(false);
+  const live = useRef<Live>({ smoke, flames, vectors, density, slice, axis, slicePos, volume, stream, speed, paused, marks, probe });
   const volEff: Volume = volume !== "off" ? volume : smoke ? "smoke" : "off";
-  live.current = { smoke, flames, vectors, density, slice, axis, slicePos, volume: volEff, stream, speed, paused };
+  live.current = { smoke, flames, vectors, density, slice, axis, slicePos, volume: volEff, stream, speed, paused, marks, probe };
   const api = useRef<Api | null>(null);
 
   useEffect(() => {
@@ -219,6 +222,14 @@ export default function FireLab() {
               <label className="range"><span>Small eddies (vorticity confinement) <b className="mono">{turb.toFixed(2)}</b></span><input type="range" min={0} max={0.8} step={0.05} value={turb} onChange={(e) => setTurb(Number(e.target.value))} /></label>
             </>}
 
+            <h2 className="col-h">Analysis</h2>
+            <div className="checks">
+              <label className="check"><input type="checkbox" checked={marks} onChange={(e) => setMarks(e.target.checked)} />Mark the extremes (hottest, least O₂, fastest air, pressure max / min)</label>
+              <label className="check"><input type="checkbox" checked={probe} onChange={(e) => setProbe(e.target.checked)} />Probe: click to measure the air velocity vector</label>
+            </div>
+            {probe && <p className="small faint">While the probe is on, a click measures instead of moving the fire. The arrow is drawn at 2 m per m/s, so 10 cm of arrow is 5 cm/s of air. Click on the colour plane to measure inside the air.</p>}
+            {marks && <p className="small faint">Pressure here is the dynamic part only (ρ·φ/Δt from the projection step), relative to the cabin mean. The uniform rise of a sealed cabin is in the readouts below.</p>}
+
             <h2 className="col-h">Readouts</h2>
             <dl className="kv">
               <div><dt>Peak temperature</dt><dd className="mono">{(ambient + hud.maxT).toFixed(0)} °C</dd></div>
@@ -317,16 +328,15 @@ function Interior({ hab, paramsRef, live, simRef, api, setHud, setDoors }: Inter
     mount.appendChild(renderer.domElement);
     const scene = new THREE.Scene();
     const pm = new THREE.PMREMGenerator(renderer); scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture; scene.environmentIntensity = 0.25;
-    const disposeBackdrop = buildBackdrop(hab, scene, sim);
-    const camera = new THREE.PerspectiveCamera(46, 1, 0.03, 400);
-    const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.minDistance = 0.5; controls.maxDistance = 40;
+    const env = buildEnvironment(hab, scene, sim, renderer);
+    const camera = new THREE.PerspectiveCamera(46, 1, 0.05, 9000);
+    const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.minDistance = 0.5; controls.maxDistance = env.extent;
     const L = Math.max(lx, lz);
     if (hab.cylinder) { camera.position.set(lx / 2 - L * 0.32, ly * 0.95, -L * 0.62); controls.target.set(lx / 2, ly * 0.42, lz * 0.55); }
     else { camera.position.set(lx / 2 - L * 0.12, ly + L * 0.3, lz + L * 0.38); controls.target.set(lx / 2 + L * 0.03, ly * 0.3, lz / 2); }
 
     scene.add(new THREE.HemisphereLight(0xf0f0ed, 0x4a4842, 0.55));
     for (const z of hab.zones) { const b = z.box; const pl = new THREE.PointLight(0xfff4e6, hab.walls === "racks" ? 1.0 : 1.8, 9, 1.5); pl.position.set(((b[0] + b[1]) / 2 - 0.5) * dx, Math.min(ly - 0.2, (b[3] - 1) * dx - 0.15), lz / 2); scene.add(pl); }
-    if (hab.backdrop === "moon" || hab.backdrop === "mars") { const sun = new THREE.DirectionalLight(0xffffff, hab.backdrop === "moon" ? 2.0 : 1.3); sun.position.set(-20, 18, 12); scene.add(sun); }
     const flameLight = new THREE.PointLight(0xff9a40, 0, 6, 1.5); scene.add(flameLight);
 
     const habScene = buildHabitatScene(hab, sim); scene.add(habScene.group); habScene.setCutaway(true);
@@ -387,7 +397,7 @@ function Interior({ hab, paramsRef, live, simRef, api, setHud, setDoors }: Inter
     const resize = () => {
       const W = mount.clientWidth, H = mount.clientHeight; renderer.setSize(W, H, false); composer.setSize(W, H);
       renderer.domElement.style.width = "100%"; renderer.domElement.style.height = "100%"; camera.aspect = W / H; camera.updateProjectionMatrix();
-      smokeP.setViewportHeight(H * renderer.getPixelRatio()); flameP.setViewportHeight(H * renderer.getPixelRatio());
+      smokeP.setViewportHeight(H * renderer.getPixelRatio()); flameP.setViewportHeight(H * renderer.getPixelRatio()); env.setViewportHeight(H * renderer.getPixelRatio());
     };
     const ro = new ResizeObserver(resize); ro.observe(mount); resize();
 
@@ -398,6 +408,7 @@ function Interior({ hab, paramsRef, live, simRef, api, setHud, setDoors }: Inter
       const d0 = down; down = null; if (!d0 || Math.hypot(e.clientX - d0.x, e.clientY - d0.y) > 5) return;
       const r = renderer.domElement.getBoundingClientRect(); ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
       ray.setFromCamera(ndc, camera);
+      if (live.current.probe) { measureAt(); return; }
       const hit = ray.intersectObjects(habScene.surfaces, false)[0]; if (!hit) return;
       const nW = hit.face ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld) : new THREE.Vector3(0, 1, 0);
       if (nW.dot(ray.ray.direction) > 0) nW.negate();
@@ -496,8 +507,71 @@ function Interior({ hab, paramsRef, live, simRef, api, setHud, setDoors }: Inter
       stGeo.setDrawRange(0, n * 2); stGeo.attributes.position.needsUpdate = true; stGeo.attributes.color.needsUpdate = true;
     };
 
+    // ---------------- analysis: extremes of the fields and a click probe that measures the velocity vector
+    const overlay = document.createElement("div"); overlay.className = "lab-overlay"; mount.appendChild(overlay);
+    type Mark = { key: string; label: string; pos: THREE.Vector3; el: HTMLDivElement };
+    const marksL: Mark[] = [];
+    const markEl = (cls: string) => { const e = document.createElement("div"); e.className = `lab-mark ${cls}`; overlay.appendChild(e); return e; };
+    const rhoAir = () => 1.2 * (sim.params.pressureKpa / 101.3) * (293 / (273 + sim.params.ambientC));
+    const cellPos = (c: number) => new THREE.Vector3(sim.centre(c % nx), sim.centre(Math.floor(c / nx) % ny), sim.centre(Math.floor(c / (nx * ny))));
+    const findExtremes = () => {
+      let cT = -1, cO = -1, cU = -1, cPh = -1, cPl = -1, vT = -1e9, vO = 1e9, vU = -1, vPh = -1e18, vPl = 1e18, sumP = 0, nP = 0;
+      for (let c = 0; c < sim.n; c++) {
+        if (sim.solid[c]) continue;
+        if (sim.T[c] > vT) { vT = sim.T[c]; cT = c; }
+        if (sim.Y[c] < vO) { vO = sim.Y[c]; cO = c; }
+        const u = sim.uc[c] * sim.uc[c] + sim.vc[c] * sim.vc[c] + sim.wc[c] * sim.wc[c]; if (u > vU) { vU = u; cU = c; }
+        const P = sim.P[c]; sumP += P; nP++; if (P > vPh) { vPh = P; cPh = c; } if (P < vPl) { vPl = P; cPl = c; }
+      }
+      const k = rhoAir() / DT, mean = nP ? sumP / nP : 0;
+      const list: [string, string, number, string][] = [
+        ["T", "hottest", cT, `${(sim.params.ambientC + vT).toFixed(0)} °C`],
+        ["O", "least O₂", cO, `${(vO * 100).toFixed(1)} %`],
+        ["U", "fastest air", cU, `${(Math.sqrt(vU) * 100).toFixed(1)} cm/s`],
+        ["Ph", "pressure max", cPh, `${((vPh - mean) * k * 1000).toFixed(1)} mPa`],
+        ["Pl", "pressure min", cPl, `${((vPl - mean) * k * 1000).toFixed(1)} mPa`],
+      ];
+      for (const [key, label, c, val] of list) {
+        let m = marksL.find((q) => q.key === key);
+        if (!m) { m = { key, label, pos: new THREE.Vector3(), el: markEl(key === "Pl" ? "low" : "") }; marksL.push(m); }
+        if (c >= 0) m.pos.copy(cellPos(c));
+        m.el.innerHTML = `<i></i><span>${label}<b>${val}</b></span>`;
+      }
+    };
+    // probe: arrow drawn at the clicked point, its length = local speed (scale bar in the readout)
+    const probeArrow = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(), 0.5, 0xf0f0ed, 0.08, 0.05); probeArrow.visible = false; probeArrow.renderOrder = 6; scene.add(probeArrow);
+    (probeArrow.line.material as THREE.LineBasicMaterial).depthTest = false; (probeArrow.cone.material as THREE.MeshBasicMaterial).depthTest = false;
+    const probeEl = markEl("probe"); probeEl.style.display = "none";
+    const probePos = new THREE.Vector3(); let probeOn = false;
+    const measureAt = () => {
+      // first a solid surface or the colour plane, else the point on the ray nearest the cabin centre
+      const hits = ray.intersectObjects([...habScene.surfaces, slicePlane].filter((o) => o.visible), false);
+      if (hits[0]) probePos.copy(hits[0].point).addScaledVector(ray.ray.direction, hits[0].object === slicePlane ? 0 : -dx * 0.6);
+      else ray.ray.closestPointToPoint(new THREE.Vector3(lx / 2, ly / 2, lz / 2), probePos);
+      probePos.set(Math.min(lx - 1e-3, Math.max(1e-3, probePos.x)), Math.min(ly - 1e-3, Math.max(1e-3, probePos.y)), Math.min(lz - 1e-3, Math.max(1e-3, probePos.z)));
+      probeOn = true; updateProbe();
+    };
+    const updateProbe = () => {
+      if (!probeOn || !live.current.probe) { probeArrow.visible = false; probeEl.style.display = "none"; return; }
+      const [u, v, w2] = sim.velocity(probePos.x, probePos.y, probePos.z); const s = Math.hypot(u, v, w2);
+      const [i, j, k] = sim.cellOf(probePos.x, probePos.y, probePos.z); const c = i + nx * (j + ny * k);
+      const scale = 2.0; // metres of arrow per m/s
+      if (s > 1e-5) { probeArrow.setDirection(new THREE.Vector3(u / s, v / s, w2 / s)); probeArrow.setLength(Math.max(0.06, s * scale), 0.07, 0.045); probeArrow.visible = true; } else probeArrow.visible = false;
+      probeArrow.position.copy(probePos);
+      const deg = s > 1e-5 ? (Math.acos(Math.max(-1, Math.min(1, v / s))) * 180) / Math.PI : 0;
+      probeEl.style.display = "block";
+      probeEl.innerHTML = `<i></i><span>|u| <b>${(s * 100).toFixed(2)} cm/s</b><br>u, v, w ${(u * 100).toFixed(1)}, ${(v * 100).toFixed(1)}, ${(w2 * 100).toFixed(1)} cm/s<br>angle from vertical ${deg.toFixed(0)}° · arrow ${(s * scale * 100).toFixed(0)} cm<br>T ${(sim.params.ambientC + sim.T[c]).toFixed(0)} °C · O₂ ${(sim.Y[c] * 100).toFixed(1)} %<br>at x ${probePos.x.toFixed(2)} y ${probePos.y.toFixed(2)} z ${probePos.z.toFixed(2)} m</span>`;
+    };
+    const pj = new THREE.Vector3();
+    const place = (el: HTMLElement, p: THREE.Vector3) => { pj.copy(p).project(camera); el.style.transform = `translate(${((pj.x + 1) / 2) * mount.clientWidth}px, ${((1 - pj.y) / 2) * mount.clientHeight}px)`; if (pj.z > 1) el.style.display = "none"; };
+    const drawOverlay = () => {
+      const on = live.current.marks && sim.state !== "idle";
+      for (const m of marksL) { m.el.style.display = on ? "block" : "none"; if (on) place(m.el, m.pos); }
+      updateProbe(); if (probeEl.style.display !== "none") place(probeEl, probePos);
+    };
+
     // ---------------- loop
-    let raf = 0, last = performance.now(), hudT = 0, simClock = 0, wallClock = 0;
+    let raf = 0, last = performance.now(), hudT = 0, simClock = 0, wallClock = 0, envT = 0;
     const DT = 0.06;
     const vfield = (x: number, y: number, z: number): [number, number, number] | null => sim.velocity(x, y, z);
     const blocked = (x: number, y: number, z: number) => sim.isSolidAt(x, y, z);
@@ -566,9 +640,12 @@ function Interior({ hab, paramsRef, live, simRef, api, setHud, setDoors }: Inter
       }
       sim.detectors.forEach((d, q) => { const m = detMeshes[q].material as THREE.MeshStandardMaterial; m.emissive.set(d.alarmAt !== null ? (Math.floor(now / 400) % 2 ? 0xff3322 : 0x330000) : 0x000000); });
 
+      envT += dtw; env.update(dtw, envT, camera);
       controls.update(); composer.render();
+      drawOverlay();
 
       if (now - hudT > 250) {
+        if (live.current.marks) findExtremes();
         hudT = now;
         setHud({
           t: s && sim.state !== "idle" ? sim.time - s.ignitedAt : 0, state: sim.state, hrr: sim.hrr, minO2: sim.minO2, maxT: sim.maxT, area: sim.burningArea, charred: sim.charredArea, dp: sim.dpPa,
@@ -584,7 +661,7 @@ function Interior({ hab, paramsRef, live, simRef, api, setHud, setDoors }: Inter
     return () => {
       cancelAnimationFrame(raf); ro.disconnect();
       renderer.domElement.removeEventListener("pointerdown", onDown); renderer.domElement.removeEventListener("pointerup", onUp);
-      disposeBackdrop(); habScene.dispose(); smokeP.dispose(); flameP.dispose(); pm.dispose(); controls.dispose(); composer.dispose(); renderer.dispose();
+      env.dispose(); overlay.remove(); habScene.dispose(); smokeP.dispose(); flameP.dispose(); pm.dispose(); controls.dispose(); composer.dispose(); renderer.dispose();
       mount.removeChild(renderer.domElement); simRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

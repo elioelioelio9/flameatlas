@@ -27,39 +27,58 @@ const j = async <T,>(url: string, init?: RequestInit): Promise<T> => {
 };
 
 const TYPES: { id: Exclude<NodeType, "query">; label: string; one: string; color: string; help: string }[] = [
-  { id: "document", label: "Investigations", one: "Investigation", color: "#e8e6df", help: "NASA experiments with data in PSI" },
-  { id: "research", label: "Conclusions", one: "Conclusion", color: "#ff8a3d", help: "What the data says for fire safety" },
-  { id: "concept", label: "Concepts", one: "Concept", color: "#a78bfa", help: "Phenomena: extinction, flame spread, soot…" },
-  { id: "entity", label: "Places & hardware", one: "Place / hardware", color: "#4cc2b0", help: "ISS, Moon, Mars, racks, vehicles" },
-  { id: "data", label: "Measured quantities", one: "Measured quantity", color: "#6f9bd1", help: "O₂, pressure, burning rate…" },
+  { id: "document", label: "Investigations", one: "Investigation", color: "#cfcfca", help: "NASA experiments with data in PSI" },
+  { id: "research", label: "Conclusions", one: "Conclusion", color: "#ffffff", help: "What the data says for fire safety" },
+  { id: "concept", label: "Concepts", one: "Concept", color: "#8c9aa6", help: "Phenomena: extinction, flame spread, soot…" },
+  { id: "entity", label: "Places & hardware", one: "Place / hardware", color: "#6d767d", help: "ISS, Moon, Mars, racks, vehicles" },
+  { id: "data", label: "Measured quantities", one: "Measured quantity", color: "#4f5457", help: "O₂, pressure, burning rate…" },
 ];
 const COLOR: Record<string, string> = { ...Object.fromEntries(TYPES.map((t) => [t.id, t.color])), query: "#ffffff" };
-const ACCENT = "#ffb066";
+const ACCENT = "#f0f0ed";
 const REL: Record<string, string> = {
   mentions: "mentions", measures: "measures", supports: "supports", contradicts: "contradicts", extends: "extends", references: "cites",
   depends_on: "depends on", contains_related_data: "shares data with", describes: "describes", shares_concept: "shares a concept with",
 };
 const NEED: Record<string, string> = { materials: "Materials & flame spread", extinction: "Extinction & suppression", detection: "Smoke detection" };
+const NEED_PHOTO: Record<string, { src: string; cap: string; who: string }> = {
+  extinction: { src: "/assets/photos/nasa_iss040e086481.jpg", cap: "BASS-II, August 2014: a flame test at reduced oxygen, run to find where the flame goes out.", who: "NASA / Expedition 40 · ISS040-E-086481" },
+  materials: { src: "/assets/photos/nasa_iss035e016429.jpg", cap: "Chris Cassidy burns material samples for BASS in the Microgravity Science Glovebox, April 2013.", who: "NASA / Expedition 35 · ISS035-E-16429" },
+  detection: { src: "/assets/photos/nasa_iss042e021318.jpg", cap: "The Destiny laboratory at night, lights off: the volume a smoke detector has to watch.", who: "NASA / Expedition 42 · ISS042-E-021318" },
+};
+const NEED_TEXT: Record<string, string> = {
+  extinction: "A flame dies when it gets too little oxygen, too little flow, or loses heat faster than it makes it. In orbit the flow is the fans, so turning them off is itself a suppression tool, but a slow breeze can also keep a weak flame alive.",
+  materials: "Materials are qualified on Earth by burning them upward in still air. Without buoyancy the flame lives in a different flow, and some materials keep burning at oxygen levels where the Earth test says they stop.",
+  detection: "Smoke does not rise in orbit. It goes where the ventilation sends it, slowly, and its particles are larger. Where a detector sits, and how fast it sees the smoke, comes from the airflow, not the ceiling.",
+};
 const KIND: Record<string, string> = { psi_text: "Stated by NASA", computed_from_table: "Computed from test tables", hypothesis: "Hypothesis to test" };
 const ASKS = ["Does turning off the fans put out a fire?", "What is missing for the Moon?", "Which materials burn at 34 % oxygen?", "How fast does a detector see smoke in microgravity?"];
 const HAB_WORDS: [RegExp, string][] = [[/moon|lunar|artemis/i, "lunar_base"], [/mars|martian/i, "mars_habitat"], [/suit|eva\b/i, "eva_suit"], [/34 ?%|8\.2 ?psi/i, "exploration_34"], [/26\.5|10\.2 ?psi/i, "exploration_26"], [/iss|station/i, "iss"]];
+const STARS = Array.from({ length: 900 }, () => { const r = Math.random(); return { x: Math.random(), y: Math.random(), d: 0.3 + Math.random(), s: r > 0.985 ? 1.8 : r > 0.9 ? 1.2 : 0.8, b: 0.12 + Math.random() ** 3 * 0.7 }; });
 const short = (n: KNode) => (n.type === "document" ? (n.props.acronym as string) || n.label.split(" — ")[0] : n.label);
 
 // ------------------------------------------------------------------ small, readable charts
 function RankBars({ rank, onOpen, onHover }: { rank: RankResponse; onOpen: (acc: string) => void; onHover: (acc: string | null) => void }) {
   const top = rank.results.slice(0, 6);
+  const [on, setOn] = useState(false);
+  useEffect(() => { setOn(false); const t = window.setTimeout(() => setOn(true), 80); return () => window.clearTimeout(t); }, [rank]);
+  const w = rank.weights ?? {}; const pc = (v: number | null | undefined) => (v === null || v === undefined ? "—" : Math.round(v * 100));
+  const wt = (k: string, d: number) => (w[k] ?? d).toFixed(1);
   return (
     <div className="ev-rank">
+      <div className="ev-scale mono" aria-hidden="true"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div>
       {top.map((r, i) => (
         <button key={r.accession} onClick={() => onOpen(r.accession)} onMouseEnter={() => onHover(r.accession)} onMouseLeave={() => onHover(null)} title={r.why.join(" ")}>
           <span className="n mono">{i + 1}</span>
           <span className="a">{r.acronym ?? r.accession}</span>
-          <span className="bar"><i style={{ width: `${Math.round(r.score * 100)}%` }} /></span>
           <span className="s mono">{Math.round(r.score * 100)}</span>
+          <span className="gauge" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(r.score * 100)}>
+            <i className="cur" style={{ left: `${on ? r.score * 100 : 0}%`, transitionDelay: `${i * 70}ms` }} />
+          </span>
+          <span className="parts mono">question {pc(r.relevance)} · conditions {r.fit === null ? "not asked, counted 50" : pc(r.fit)} · data {pc(r.data)}</span>
           <span className="w">{r.why[0]}</span>
         </button>
       ))}
-      <p className="ev-note">Score out of 100 = how well the investigation matches the question and how much test data it holds. Click one to open its data.</p>
+      <p className="ev-note">The cursor sits at the score, out of 100. Score = {wt("relevance", 0.5)} × how well the investigation matches the question + {wt("fit", 0.3)} × how close its tests are to the gravity, oxygen and pressure asked + {wt("data", 0.2)} × how much test data it holds. The three parts are listed under each cursor. Click a line to open the data.</p>
     </div>
   );
 }
@@ -222,12 +241,18 @@ export default function Evidence() {
       const on = lit(); const centre = dragging?.id ?? hover?.id ?? pk ?? f ?? null;
       const answer = new Set(r ? r.path.nodes.filter((p) => p.used).map((p) => p.id) : []);
       g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+      // star field, with a slight parallax when the graph is panned or zoomed
+      for (const st of STARS) {
+        const px = (((st.x * W + t.x * st.d * 0.06) % W) + W) % W, py = (((st.y * H + t.y * st.d * 0.06) % H) + H) % H;
+        g.globalAlpha = st.b; g.fillStyle = "#f0f0ed"; g.fillRect(px, py, st.s, st.s);
+      }
+      g.globalAlpha = 1;
       g.save(); g.translate(t.x, t.y); g.scale(t.k, t.k);
       // links
       g.lineWidth = 0.7 / t.k;
       for (const e of links) {
         const a = e.source!, b = e.target!; const hot = on ? (centre ? (a.id === centre || b.id === centre) : on.has(a.id) && on.has(b.id)) : false;
-        g.strokeStyle = hot ? "rgba(255,176,102,.75)" : on ? "rgba(240,240,237,.035)" : "rgba(240,240,237,.11)";
+        g.strokeStyle = hot ? "rgba(240,240,237,.8)" : on ? "rgba(240,240,237,.035)" : "rgba(240,240,237,.11)";
         g.lineWidth = (hot ? 1.3 : 0.7) / t.k;
         g.beginPath(); g.moveTo(a.x!, a.y!); g.lineTo(b.x!, b.y!); g.stroke();
       }
@@ -236,7 +261,7 @@ export default function Evidence() {
       for (const n of nodes) {
         const rr = radius(n), isOn = !on || on.has(n.id), c = COLOR[n.type];
         g.globalAlpha = isOn ? 1 : 0.16;
-        if (isOn && (answer.has(n.id) || n.id === centre || n.type === "query")) { g.beginPath(); g.arc(n.x!, n.y!, rr + 5 / t.k + 2, 0, 6.2832); g.fillStyle = n.type === "query" ? "rgba(255,255,255,.16)" : "rgba(255,176,102,.22)"; g.fill(); }
+        if (isOn && (answer.has(n.id) || n.id === centre || n.type === "query")) { g.beginPath(); g.arc(n.x!, n.y!, rr + 5 / t.k + 2, 0, 6.2832); g.fillStyle = n.type === "query" ? "rgba(255,255,255,.16)" : "rgba(240,240,237,.16)"; g.fill(); }
         g.beginPath(); g.arc(n.x!, n.y!, rr, 0, 6.2832); g.fillStyle = c; g.fill();
         if (n.id === f) { g.lineWidth = 2 / t.k; g.strokeStyle = "#fff"; g.stroke(); }
       }
@@ -408,23 +433,42 @@ export default function Evidence() {
         )}
       </section>
 
+      <section className="ev-how">
+        <h2>How to use this page</h2>
+        <ol>
+          <li><b>Ask.</b> Type a question or a scenario in the bar above, or pick one of the examples. The answer quotes NASA records; nothing is invented.</li>
+          <li><b>Check the ranking.</b> The investigations that best match the question are listed with a score out of 100 and what it is made of.</li>
+          <li><b>Follow the links.</b> Every bead in the graph is an investigation, a conclusion, a phenomenon or a place. Click one to see what it is connected to and why.</li>
+        </ol>
+      </section>
+
       <section className="ev-conc">
         <header>
-          <p className="mono meta">{insights.length} conclusions · each one traced to its NASA records</p>
+          <p className="mono meta">{insights.length} conclusions, each traced to its NASA records</p>
           <h2>What the evidence says for fire safety.</h2>
+          <p className="lede">Three questions decide whether a fire in a habitat stays small: what will burn, how a flame dies, and how fast the crew knows. Click a conclusion to light it and its sources in the graph.</p>
         </header>
         {(["extinction", "materials", "detection"] as const).map((need) => (
           <div className="grp" key={need}>
-            <h3>{NEED[need]}</h3>
-            <div className="cards">
-              {insights.filter((i) => i.need === need).map((i) => (
-                <button key={i.id} className={focus === `research:${i.id}` ? "on" : ""} onClick={() => pick(`research:${i.id}`)}>
-                  <span className={`k mono ${i.evidence_kind}`}>{KIND[i.evidence_kind]}</span>
-                  <b>{i.title}</b>
-                  <span className="q">{i.design_question}</span>
-                  <span className="src mono">{[...new Set(i.sources.map((s) => (s.accession ? byAcc[s.accession]?.acronym ?? s.accession : null)).filter(Boolean))].join(" · ")}</span>
-                </button>
-              ))}
+            <figure className="ph">
+              <img src={NEED_PHOTO[need].src} alt={NEED_PHOTO[need].cap} loading="lazy" />
+              <figcaption><span>{NEED_PHOTO[need].cap}</span><span className="mono meta">{NEED_PHOTO[need].who}</span></figcaption>
+            </figure>
+            <div className="txt">
+              <h3>{NEED[need]}</h3>
+              <p className="intro">{NEED_TEXT[need]}</p>
+              <ul>
+                {insights.filter((i) => i.need === need).map((i) => (
+                  <li key={i.id}>
+                    <button className={focus === `research:${i.id}` ? "on" : ""} onClick={() => pick(`research:${i.id}`)}>
+                      <span className="k mono">{KIND[i.evidence_kind]}</span>
+                      <b>{i.title}</b>
+                      <span className="q">{i.design_question}</span>
+                      <span className="src mono">{[...new Set(i.sources.map((s) => (s.accession ? byAcc[s.accession]?.acronym ?? s.accession : null)).filter(Boolean))].join(" · ")}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
         ))}

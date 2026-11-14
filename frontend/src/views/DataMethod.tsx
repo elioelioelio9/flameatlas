@@ -1,10 +1,22 @@
 import Extract from "./Extract";
 import Method from "./Method";
+import Theory from "./Theory";
 
-/** Data & method: the export tool for the technical jury, then how every number was obtained. */
+/** Data & method: what this page is for, the physics with worked numbers, the export tool, then how every number was obtained. */
 export default function DataMethod() {
   return (
     <div className="datamethod">
+      <header className="dm-intro">
+        <h1>Data &amp; method</h1>
+        <p className="lede">This page is for checking our work. Everything else on the site, the simulation and the evidence, is built from what is here.</p>
+        <dl>
+          <div><dt><a href="#theory">The physics</a></dt><dd>The few relations that explain why fire behaves differently in orbit, on the Moon and on Mars, with every number worked out.</dd></div>
+          <div><dt><a href="#extract">The data extractor</a></dt><dd>NASA's Physical Sciences Informatics (PSI) repository holds the test records of every combustion experiment flown. Pick investigations, filter by gravity, oxygen or pressure, and download a CSV in which each row names its source file and row number.</dd></div>
+          <div><dt><a href="#method">The method</a></dt><dd>How the records were cleaned, how the investigations are ranked, how the simulation is built, and what the tool does not claim.</dd></div>
+        </dl>
+      </header>
+      <div id="theory"><Theory /></div>
+      <div className="dm-sep" id="extract" />
       <Extract />
       <div className="dm-sep" id="method" />
       <Method />
