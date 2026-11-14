@@ -5,6 +5,7 @@ trap 'echo; read -r -p "Appuie sur Entrée pour fermer cette fenêtre…" _' EXI
 cd "$(dirname "$0")" || exit 1
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 [ -x .venv/bin/uvicorn ] || { echo "Lance d'abord setup.command."; exit 1; }
+if [ -d .git ]; then echo "==> Mise à jour depuis GitHub…"; git pull --ff-only || echo "(mise à jour ignorée)"; fi
 if [ ! -d frontend/node_modules/three ] || [ frontend/package.json -nt frontend/node_modules/.package-lock.json ]; then
   echo "==> Installation des paquets du frontend (une seule fois)…"
   (cd frontend && npm install --no-fund --no-audit) || { echo "ARRÊT: npm install a échoué"; exit 1; }
