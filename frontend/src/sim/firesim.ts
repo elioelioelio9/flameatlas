@@ -143,7 +143,7 @@ export class CabinFire {
     for (const d of hab.doors) if (this.doorOpen[d.id]) mark(d.box, 0);
     const cyl = hab.cylinder;
     if (cyl) for (let j = 0; j < ny; j++) {
-      const r = cyl.rTop !== undefined ? cyl.r + (cyl.rTop - cyl.r) * ((j + 0.5) / ny) : cyl.r;
+      const r = cyl.dome ? Math.sqrt(Math.max(0, cyl.r * cyl.r - (j + 0.5) * (j + 0.5))) : cyl.rTop !== undefined ? cyl.r + (cyl.rTop - cyl.r) * ((j + 0.5) / ny) : cyl.r;
       for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) if ((i + 1 - cyl.cx) ** 2 + (k + 1 - cyl.cz) ** 2 > r * r) this.solid[this.IX(i, j, k)] = 1;
     }
     // faces

@@ -18,6 +18,8 @@ export interface WorldScene {
   group: THREE.Group;
   /** object whose interior is the fire-lab habitat (its world position anchors labels and clicks) */
   habitat: THREE.Object3D;
+  /** other enterable rooms of the base, by key (see sim/habitats.ts) */
+  rooms: Record<string, THREE.Object3D>;
   update: (dt: number, t: number) => void;
   setViewportHeight: (px: number) => void;
   /** scale applied to the group (keeps particle sizes consistent) */
@@ -40,7 +42,7 @@ type Updater = (dt: number, t: number) => void;
 
 function finish(id: WorldId, group: THREE.Group, habitat: THREE.Object3D, ups: Updater[], extra: Partial<WorldScene>, disposers: (() => void)[], puffs: Puffs[] = []): WorldScene {
   return {
-    id, group, habitat,
+    id, group, habitat, rooms: extra.rooms ?? {},
     update: (dt, t) => ups.forEach((u) => u(dt, t)),
     setViewportHeight: (px) => puffs.forEach((p) => p.setViewportHeight(px)),
     setScale: (k) => puffs.forEach((p) => p.setScale(k)),
@@ -135,7 +137,7 @@ function earth(d: Detail, bare = false): WorldScene {
 
   return finish("earth", g, capsule, ups, {
     sun: { dir: new THREE.Vector3(-0.6, 0.75, 0.4).normalize(), color: 0xfff1dc, intensity: 3.2, ambient: 0.55, sky: 0x9cc4e8 },
-    camera: { pos: new THREE.Vector3(6.5, 4.8, 8.2), target: new THREE.Vector3(-0.4, 1.3, 0) }, anchor: new THREE.Vector3(-1.1, padP.h, -0.4),
+    camera: { pos: new THREE.Vector3(6.5, 4.8, 8.2), target: new THREE.Vector3(-0.4, 1.3, 0) }, anchor: new THREE.Vector3(-1.1, padP.h, -0.4), rooms: { control: cb },
   }, [tile.dispose], [flame, steam, trail]);
 }
 
@@ -175,7 +177,7 @@ function moon(d: Detail, bare = false): WorldScene {
   });
   return finish("moon", g, hab, ups, {
     sun: { dir: new THREE.Vector3(-0.85, 0.28, 0.35).normalize(), color: 0xffffff, intensity: 3.4, ambient: 0.1, sky: null },
-    camera: { pos: new THREE.Vector3(6.8, 4.6, 7.4), target: new THREE.Vector3(0, 0.2, 0.2) }, anchor: new THREE.Vector3(0, 0, 0.6),
+    camera: { pos: new THREE.Vector3(6.8, 4.6, 7.4), target: new THREE.Vector3(0, 0.2, 0.2) }, anchor: new THREE.Vector3(0, 0, 0.6), rooms: { logistics: m2, greenhouse: gh },
   }, [tile.dispose]);
 }
 
@@ -188,9 +190,11 @@ function mars(d: Detail, bare = false): WorldScene {
 
   const hab = moduleV(d, 0.4, 0.66, true); hab.position.set(0.8, y0, 0.9); g.add(hab);          // the fire-lab habitat (two decks)
   const ring6: [number, number, number][] = [[2.1, 0.5, 0.2], [1.6, 2.1, -1.0], [-0.4, 1.9, 0.9], [-0.5, 0.0, 2.0], [0.9, -0.5, 1.4]];
+  const rooms: Record<string, THREE.Object3D> = {};
   ring6.forEach(([x, z, ry], q) => {
     const m = q === 1 ? dome(d, 0.45, true) : q === 3 ? dome(d, 0.5) : moduleH(d, 0.95, 0.2);
     m.position.set(x, y0, z); if (q !== 1 && q !== 3) m.rotation.y = ry; g.add(m);
+    if (q === 0) rooms.lab = m; if (q === 1) rooms.greenhouse = m;
     g.add(tunnel(d, [[0.8 + (x - 0.8) * 0.2, y0 + 0.16, 0.9 + (z - 0.9) * 0.2], [0.8 + (x - 0.8) * 0.55, y0 + 0.15, 0.9 + (z - 0.9) * 0.55], [0.8 + (x - 0.8) * 0.78, y0 + 0.15, 0.9 + (z - 0.9) * 0.78]], 0.07));
   });
   const gh2 = dome(d, 0.38, true); gh2.position.set(2.5, y0, 1.7); g.add(gh2);
@@ -221,7 +225,7 @@ function mars(d: Detail, bare = false): WorldScene {
   });
   return finish("mars", g, hab, ups, {
     sun: { dir: new THREE.Vector3(-0.5, 0.62, 0.55).normalize(), color: 0xffe2c4, intensity: 3.0, ambient: 0.45, sky: 0xc9a07e },
-    camera: { pos: new THREE.Vector3(6.8, 5.2, 7.6), target: new THREE.Vector3(0.3, 0.4, 0.6) }, anchor: new THREE.Vector3(0.4, base.h, 1.3),
+    camera: { pos: new THREE.Vector3(6.8, 5.2, 7.6), target: new THREE.Vector3(0.3, 0.4, 0.6) }, anchor: new THREE.Vector3(0.4, base.h, 1.3), rooms,
   }, [tile.dispose], [dust]);
 }
 

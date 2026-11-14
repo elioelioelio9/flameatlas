@@ -14,12 +14,16 @@ import type { CabinFire } from "../../sim/firesim";
 export interface Environment {
   update: (dt: number, t: number, camera: THREE.Camera) => void;
   setViewportHeight: (px: number) => void;
-  /** a comfortable outer zoom limit, metres */
-  extent: number;
+  /** metres per unit of the exterior model: overview distances scale with it */
+  k: number;
+  /** world position (metres, grid frame) of a room of this base */
+  roomPos: (room: string, out: THREE.Vector3) => THREE.Vector3;
   dispose: () => void;
 }
 
-const worldOf = (hab: Habitat): WorldId => (hab.backdrop === "orbit" ? "iss" : hab.backdrop);
+const worldOf = (hab: Habitat): WorldId => hab.world;
+/** metres per tile unit: Moon 10 m module = 1.7 units, Mars 6 m habitat = 0.8 units, Earth 5 m capsule = 0.18 units, ISS 109 m = 6.2 units */
+const SCALE: Record<WorldId, number> = { moon: 9.92 / 1.7, mars: (15.1 * 0.2 * 1.03) / 0.4, earth: (16.1 * 0.16) / 0.09, iss: 109 / 6.2 };
 
 function stars(radius: number, n = 4000) {
   const p = new Float32Array(n * 3), c = new Float32Array(n * 3);
@@ -74,37 +78,50 @@ export function buildEnvironment(hab: Habitat, scene: THREE.Scene, sim: CabinFir
   w.group.updateMatrixWorld(true);
 
   // ---------------------------------------------------- fit the diorama to the grid (metres)
-  let k = 1; const target = new THREE.Vector3(); const pin = new THREE.Vector3();
-  const habObj = w.habitat;
-  if (id === "moon") {
-    // horizontal module, 1.7 long × 0.27 radius in tile units; its hull is widened to wrap the rectangular grid
-    k = lx / 1.7;
+  // one scale per base, so every room of a base is drawn at the same size; the grid of the active room sits at the origin
+  const k = SCALE[id]; const target = new THREE.Vector3(); const pin = new THREE.Vector3();
+  const habObj = hab.room === "main" ? w.habitat : w.rooms[hab.room] ?? w.habitat;
+  const Y = new THREE.Vector3(0, 1, 0);
+  if (hab.fit === "module") {
+    // horizontal cylinder lying along its own x axis: turn the whole base so that axis is the grid's x, widen the hull to wrap the grid
+    const rTile = new THREE.Box3().setFromObject(habObj).getSize(new THREE.Vector3()).y / 2;
+    root.rotation.y = -habObj.rotation.y;
+    const rk = Math.hypot(ly / 2, lz / 2) * 1.04;
+    habObj.scale.set(1, rk / (rTile * k), rk / (rTile * k));
+    target.set(lx / 2, ly / 2 - rk, lz / 2);
+  } else if (hab.fit === "dome") {
+    habObj.children.forEach((c) => { if ((c as THREE.Mesh).geometry?.type === "BoxGeometry") c.visible = false; }); // plant rows are solver cells here
+    target.set(lx / 2, -0.03, lz / 2);
+  } else if (hab.fit === "box") {
+    target.set(lx / 2, ly / 2, lz / 2);
+  } else if (id === "moon") {
     const rk = Math.hypot(ly / 2, lz / 2) * 1.04;
     habObj.scale.set(1, rk / (0.27 * k), rk / (0.27 * k));
-    habObj.getWorldPosition(pin); target.set(lx / 2, ly / 2 - rk, lz / 2);
+    target.set(lx / 2, ly / 2 - rk, lz / 2);
   } else if (id === "mars") {
-    const cyl = hab.cylinder!; const R = (cyl.r + 0.5) * dx;
-    k = (R * 1.03) / 0.4;
+    const cyl = hab.cylinder!;
     const sy = ly / (0.66 * k); habObj.scale.set(1, sy, 1);
-    habObj.getWorldPosition(pin); target.set(cyl.cx * dx, -0.06 * k * sy, cyl.cz * dx);
+    target.set(cyl.cx * dx, -0.06 * k * sy, cyl.cz * dx);
   } else if (id === "earth") {
     // crew capsule at the top of the launch vehicle: the grid replaces the capsule, the escape tower stays above it
-    const cyl = hab.cylinder!; k = ((cyl.r + 0.5) * dx) / 0.09;
+    const cyl = hab.cylinder!;
     const rocket = habObj.parent!;
     rocket.children.forEach((c) => { if (c.position.y > 2.84 && c.position.y < 3.12) c.visible = false; });
-    rocket.localToWorld(pin.set(0, 2.83, 0)); target.set(cyl.cx * dx, 0, cyl.cz * dx);
+    target.set(cyl.cx * dx, 0, cyl.cz * dx);
   } else {
-    // ISS: 6.2 tile units ≈ 109 m of truss; the grid sits at the centre of the station
-    k = 109 / 6.2;
     w.group.children.forEach((o) => { if (o.userData.tile) o.visible = false; });
-    habObj.getWorldPosition(pin); target.set(lx / 2, ly / 2, lz / 2);
+    target.set(lx / 2, ly / 2, lz / 2);
   }
+  if (id === "iss") w.group.children.forEach((o) => { if (o.userData.tile) o.visible = false; });
+  root.updateMatrixWorld(true);
+  if (hab.fit === "main" && id === "earth") habObj.parent!.localToWorld(pin.set(0, 2.83, 0)); else habObj.getWorldPosition(pin);
   root.scale.setScalar(k);
   root.position.copy(target).addScaledVector(pin, -k);
   w.setScale(k);
+  root.updateMatrixWorld(true);
 
   // ---------------------------------------------------- sky, light, far scenery
-  const sunDir = w.sun.dir.clone();
+  const sunDir = w.sun.dir.clone().applyAxisAngle(Y, root.rotation.y);
   const sun = new THREE.DirectionalLight(w.sun.color, w.sun.intensity * 0.7); sun.position.copy(sunDir).multiplyScalar(100); add(sun); add(sun.target);
   add(new THREE.HemisphereLight(w.sun.sky ?? 0x8899aa, id === "mars" ? 0x5a3220 : 0x222222, w.sun.ambient * 0.8));
   let earthBody: THREE.Mesh | null = null;
@@ -147,7 +164,8 @@ export function buildEnvironment(hab: Habitat, scene: THREE.Scene, sim: CabinFir
 
   const flat = new THREE.Vector3(); let scanT = 0;
   return {
-    extent: Math.max(40, 10 * k * 0.9),
+    k,
+    roomPos: (room, out) => { const o = room === "main" ? w.habitat : w.rooms[room]; return o ? o.getWorldPosition(out) : out.set(lx / 2, ly, lz / 2); },
     setViewportHeight: (px) => w.setViewportHeight(px),
     update: (dt, t, camera) => {
       // keep the launch pad before ignition and the station still: the grid does not move with them

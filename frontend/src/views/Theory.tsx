@@ -161,6 +161,32 @@ export default function Theory() {
       </div>
 
       <div className="th-block">
+        <h3>The candle on the first page</h3>
+        <div className="th-cols">
+          <div>
+            <p>The opening flame is a separate, finer computation: an axisymmetric slice 4 cm wide and 10 cm high, in cells of 0.625 mm. It uses the classical flame-sheet model of Burke and Schumann. A single quantity is transported, the mixture fraction Z (1 in the fuel vapour at the wick, 0 in air). Fuel and oxygen meet in exact proportion where Z = Z<sub>st</sub>, 0.064 for paraffin in air: that surface is the flame.</p>
+            <Eq label="mixture fraction">∂Z/∂t + u·∇Z = ∇·( D(T) ∇Z )</Eq>
+            <Eq label="flow, Boussinesq">∂u/∂t + (u·∇)u = −∇p + ν(T)∇²u + g (1 − T∞/T) ŷ</Eq>
+            <p>Temperature follows from Z, peaking at the sheet, and diffusivity grows as T<sup>1.7</sup>. Nothing in the model knows about gravity except the last term of the flow equation.</p>
+          </div>
+          <div>
+            <p>Why the flame cools and turns blue: a flame that is weakly stretched is thick and slow, and radiates away a larger share of its heat. The model measures that stretch as the scalar dissipation rate on the sheet, a = D|∇Z|², and lowers the peak temperature accordingly.</p>
+            <Eq label="T_max = 1 670 K, a½ = 0.008 s⁻¹">T<sub>f</sub> = T∞ + (T<sub>max</sub> − T∞) · a / (a + a½)</Eq>
+            <table className="th-tab">
+              <thead><tr><th>Computed, steady state</th><th className="num">Earth</th><th className="num">Mars</th><th className="num">Moon</th><th className="num">0 g</th></tr></thead>
+              <tbody>
+                <tr><td>Flame temperature</td><td className="num mono">1 639 K</td><td className="num mono">1 622 K</td><td className="num mono">1 615 K</td><td className="num mono">≈ 1 400 K</td></tr>
+                <tr><td>Fastest gas</td><td className="num mono">77 cm/s</td><td className="num mono">46 cm/s</td><td className="num mono">30 cm/s</td><td className="num mono">0</td></tr>
+                <tr><td>Flame width</td><td className="num mono">10 mm</td><td className="num mono">11 mm</td><td className="num mono">13 mm</td><td className="num mono">19 mm, growing</td></tr>
+                <tr><td>Wax burned</td><td className="num mono">1.8 mg/s</td><td className="num mono">1.6 mg/s</td><td className="num mono">1.5 mg/s</td><td className="num mono">≈ 0.8 mg/s</td></tr>
+              </tbody>
+            </table>
+            <p className="faint small">Soot glows yellow only where the fuel-rich side is above about 1 400 K, which is why the 0 g flame is blue. Left out: thermal expansion of the gas, detailed chemistry, soot transport. The trends match NASA's candle-flame experiments; the numbers are a model.</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="th-block">
         <h3>How the solver computes the flow</h3>
         <div className="th-cols">
           <div>

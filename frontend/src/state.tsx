@@ -27,7 +27,14 @@ interface AppState {
   loadError: string | null;
   firePreset: string | null;
   setFirePreset: (p: string | null) => void;
+  /** conditions handed from an Evidence question to the simulation */
+  fireSetup: FireSetup | null;
+  setFireSetup: (s: FireSetup | null) => void;
+  /** a question handed from the simulation to Evidence */
+  evidenceQuery: string | null;
+  setEvidenceQuery: (q: string | null) => void;
 }
+export interface FireSetup { world?: "iss" | "moon" | "mars" | "earth"; g?: number; o2?: number; p?: number; vent?: number; material?: string; from: string }
 
 const Ctx = createContext<AppState | null>(null);
 
@@ -47,6 +54,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [drawer, setDrawer] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [firePreset, setFirePreset] = useState<string | null>(null);
+  const [fireSetup, setFireSetup] = useState<FireSetup | null>(null);
+  const [evidenceQuery, setEvidenceQuery] = useState<string | null>(null);
 
   useEffect(() => {
     const onHash = () => setRoute(readRoute());
@@ -73,7 +82,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const value: AppState = {
     route, go, scenario, setScenario, patchScenario, meta, investigations, habitats, byAcc,
     compareIds, toggleCompare, setCompareIds, extractIds, setExtractIds, drawer, openDrawer: setDrawer, loadError,
-    firePreset, setFirePreset,
+    firePreset, setFirePreset, fireSetup, setFireSetup, evidenceQuery, setEvidenceQuery,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

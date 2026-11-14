@@ -12,7 +12,12 @@ export interface DetectorDef { id: string; label: string; zone: string; i: numbe
 export interface Furniture { id: string; label: string; box: Box; kind: "rack" | "bench" | "bunk" | "deck" | "partition" | "bulkhead" | "locker" }
 
 export interface Habitat {
-  id: "iss" | "moon" | "mars" | "earth";
+  id: string;
+  /** the base this room belongs to; several rooms of one base share the same exterior scene */
+  world: "iss" | "moon" | "mars" | "earth";
+  /** which object of the exterior scene this grid sits in ("main" = the central habitat) and its shape */
+  room: string;
+  fit: "main" | "module" | "dome" | "box";
   name: string;
   short: string;
   place: string;
@@ -23,7 +28,7 @@ export interface Habitat {
   doors: Door[];
   vents: Vent[];
   detectors: DetectorDef[];
-  cylinder?: { axis: "y"; cx: number; cz: number; r: number; rTop?: number }; // cells outside are solid (round hull; rTop makes a cone)
+  cylinder?: { axis: "y"; cx: number; cz: number; r: number; rTop?: number; dome?: boolean }; // cells outside are solid (round hull; rTop makes a cone, dome a hemisphere)
   ignition: { i: number; j: number; k: number; n: [number, number, number] };
   walls: "racks" | "panels" | "shell";
   backdrop: "orbit" | "moon" | "mars" | "earth";
@@ -55,14 +60,14 @@ const issDet = (): DetectorDef[] => [
 
 export const HABITATS: Habitat[] = [
   {
-    id: "iss", name: "ISS — Node 1, US Lab, Node 2", short: "ISS", place: "Low Earth orbit",
+    id: "iss", world: "iss", room: "main", fit: "main", name: "ISS — Node 1, US Lab, Node 2", short: "ISS", place: "Low Earth orbit",
     dx: 0.16, nx: ISS_NX, ny: ISS_N, nz: ISS_N, gravity: 0,
     zones: issZones, solids: [b1, b2], doors: [h1, h2], vents: issVents, detectors: issDet(),
     ignition: { i: 45, j: 1, k: 4, n: [0, 1, 0] }, walls: "racks", backdrop: "orbit",
     note: "2.08 m square aisles lined with racks; cabin air enters in Node 1 and leaves through Node 2.",
   },
   {
-    id: "moon", name: "Moon base — surface habitat", short: "Moon base", place: "Taurus-Littrow backdrop (Apollo 17)",
+    id: "moon", world: "moon", room: "main", fit: "main", name: "Moon base — surface habitat", short: "Moon base", place: "Taurus-Littrow backdrop (Apollo 17)",
     dx: 0.16, nx: 62, ny: 15, nz: 20, gravity: 1.62,
     zones: [
       { id: "lab", name: "Laboratory", box: [1, 35, 1, 15, 1, 20] },
@@ -98,7 +103,7 @@ export const HABITATS: Habitat[] = [
     note: "A rigid surface module, 10 m × 3.2 m, 2.4 m headroom: lab, crew quarters and airlock. 1/6 g buoyancy.",
   },
   {
-    id: "mars", name: "Mars habitat — two decks", short: "Mars habitat", place: "Gale crater backdrop (Curiosity)",
+    id: "mars", world: "mars", room: "main", fit: "main", name: "Mars habitat — two decks", short: "Mars habitat", place: "Gale crater backdrop (Curiosity)",
     dx: 0.2, nx: 30, ny: 24, nz: 30, gravity: 3.71,
     cylinder: { axis: "y", cx: 15.5, cz: 15.5, r: 14.6 },
     zones: [
@@ -126,7 +131,7 @@ export const HABITATS: Habitat[] = [
     note: "A 6 m diameter, two-deck habitat linked by a floor hatch. At 0.38 g hot smoke climbs to the upper deck.",
   },
   {
-    id: "earth", name: "Earth — crew capsule on the pad", short: "Earth", place: "Launch pad, 1 g",
+    id: "earth", world: "earth", room: "main", fit: "main", name: "Earth — crew capsule on the pad", short: "Earth", place: "Launch pad, 1 g",
     dx: 0.16, nx: 32, ny: 21, nz: 32, gravity: 9.81,
     cylinder: { axis: "y", cx: 16.5, cz: 16.5, r: 15.6, rTop: 7.5 },
     zones: [
@@ -153,5 +158,97 @@ export const HABITATS: Habitat[] = [
     note: "A 5 m conical capsule, crew couches below the console. On the pad, 1 g — the setting of the 1967 Apollo 1 fire.",
   },
 ];
+
+// ------------------------------------------------------------------ secondary rooms of each base
+// Sizes follow the exterior model at the scale of its base (see views/firelab/environment.ts).
+const moduleRoom = (o: { id: string; world: Habitat["world"]; room: string; name: string; short: string; dx: number; nx: number; ny: number; nz: number; gravity: number; backdrop: Habitat["backdrop"]; solids: Furniture[]; ignition: Habitat["ignition"]; note: string; zone: string }): Habitat => ({
+  id: o.id, world: o.world, room: o.room, fit: "module", name: o.name, short: o.short, place: "", dx: o.dx, nx: o.nx, ny: o.ny, nz: o.nz, gravity: o.gravity,
+  zones: [{ id: "room", name: o.zone, box: [1, o.nx, 1, o.ny, 1, o.nz] }], solids: o.solids, doors: [],
+  vents: [
+    { id: "supply", label: "Ceiling diffuser", kind: "supply", face: "y1", a: [Math.round(o.nx * 0.25), Math.round(o.nx * 0.25) + 5], b: [Math.round(o.nz / 2) - 2, Math.round(o.nz / 2) + 2] },
+    { id: "return", label: "Return grille (end wall, low)", kind: "return", face: "x1", a: [2, 5], b: [Math.round(o.nz / 2) - 2, Math.round(o.nz / 2) + 2] },
+  ],
+  detectors: [
+    { id: "ceil", label: "Ceiling", zone: "room", i: Math.round(o.nx / 2), j: o.ny, k: Math.round(o.nz / 2), kind: "point" },
+    { id: "return", label: "Return duct", zone: "room", i: o.nx, j: 3, k: Math.round(o.nz / 2), kind: "duct", vent: "return" },
+  ],
+  ignition: o.ignition, walls: "panels", backdrop: o.backdrop, note: o.note,
+});
+const domeRoom = (o: { id: string; world: Habitat["world"]; room: string; name: string; short: string; dx: number; n: number; ny: number; gravity: number; backdrop: Habitat["backdrop"]; note: string }): Habitat => {
+  const n = o.n, c = (n + 1) / 2, m = Math.round(n / 2);
+  const beds: Furniture[] = [-1, 1].flatMap((sx) => [-1, 1].map((sz) => ({
+    id: `bed${sx}${sz}`, label: "Plant growth bed", kind: "bench" as const,
+    box: [sx < 0 ? Math.round(n * 0.2) : m + 3, sx < 0 ? m - 3 : Math.round(n * 0.8), 1, 4, sz < 0 ? Math.round(n * 0.28) : m + 3, sz < 0 ? m - 3 : Math.round(n * 0.72)] as Box,
+  })));
+  return {
+    id: o.id, world: o.world, room: o.room, fit: "dome", name: o.name, short: o.short, place: "", dx: o.dx, nx: n, ny: o.ny, nz: n, gravity: o.gravity,
+    cylinder: { axis: "y", cx: c, cz: c, r: n / 2 - 0.4, dome: true },
+    zones: [{ id: "room", name: "Greenhouse", box: [1, n, 1, o.ny, 1, n] }], solids: beds, doors: [],
+    vents: [
+      { id: "supply", label: "Overhead air outlet", kind: "supply", face: "y1", a: [m - 2, m + 3], b: [m - 2, m + 3] },
+      { id: "return", label: "Floor return", kind: "return", face: "y0", a: [m - 1, m + 2], b: [3, 5] },
+    ],
+    detectors: [
+      { id: "ceil", label: "Dome apex", zone: "room", i: m, j: o.ny, k: m + 4, kind: "point" },
+      { id: "return", label: "Return duct", zone: "room", i: m, j: 1, k: 4, kind: "duct", vent: "return" },
+    ],
+    ignition: { i: Math.round(n * 0.3), j: 5, k: Math.round(n * 0.35), n: [0, 1, 0] }, walls: "shell", backdrop: o.backdrop, note: o.note,
+  };
+};
+
+HABITATS.push(
+  moduleRoom({
+    id: "moon-logistics", world: "moon", room: "logistics", name: "Moon base — logistics module", short: "Logistics module", zone: "Logistics and stowage",
+    dx: 0.16, nx: 44, ny: 14, nz: 15, gravity: 1.62, backdrop: "moon",
+    solids: [
+      { id: "stow-a", label: "Cargo bags (port)", box: [3, 30, 1, 9, 1, 3], kind: "locker" },
+      { id: "stow-b", label: "Cargo bags (starboard)", box: [14, 40, 1, 7, 13, 15], kind: "locker" },
+      { id: "bench", label: "Maintenance bench", box: [34, 42, 1, 5, 1, 4], kind: "bench" },
+    ],
+    ignition: { i: 16, j: 5, k: 4, n: [0, 0, 1] },
+    note: "A 7 m stowage module packed with soft cargo bags: the largest fuel load of the base.",
+  }),
+  domeRoom({ id: "moon-greenhouse", world: "moon", room: "greenhouse", name: "Moon base — greenhouse dome", short: "Greenhouse", dx: 0.16, n: 32, ny: 14, gravity: 1.62, backdrop: "moon",
+    note: "A 5 m dome with four plant beds. Plants raise local oxygen and humidity; dry biomass is fuel." }),
+  moduleRoom({
+    id: "mars-lab", world: "mars", room: "lab", name: "Mars outpost — science module", short: "Science module", zone: "Science laboratory",
+    dx: 0.2, nx: 37, ny: 11, nz: 12, gravity: 3.71, backdrop: "mars",
+    solids: [
+      { id: "bench-a", label: "Sample bench", box: [4, 22, 1, 4, 1, 3], kind: "bench" },
+      { id: "racks", label: "Instrument racks", box: [10, 33, 1, 9, 11, 12], kind: "rack" },
+      { id: "glove", label: "Glovebox", box: [26, 32, 1, 6, 1, 3], kind: "locker" },
+    ],
+    ignition: { i: 12, j: 5, k: 2, n: [0, 1, 0] },
+    note: "A 7.4 m laboratory module linked to the central habitat by a tunnel.",
+  }),
+  domeRoom({ id: "mars-greenhouse", world: "mars", room: "greenhouse", name: "Mars outpost — greenhouse dome", short: "Greenhouse", dx: 0.2, n: 34, ny: 14, gravity: 3.71, backdrop: "mars",
+    note: "A 7 m dome with four plant beds, at 0.38 g." }),
+  {
+    id: "earth-control", world: "earth", room: "control", fit: "box", name: "Earth — launch control room", short: "Launch control", place: "",
+    dx: 0.3, nx: 42, ny: 14, nz: 28, gravity: 9.81,
+    zones: [{ id: "room", name: "Firing room", box: [1, 42, 1, 14, 1, 28] }],
+    solids: [
+      { id: "row1", label: "Console row 1", box: [8, 34, 1, 4, 7, 8], kind: "bench" },
+      { id: "row2", label: "Console row 2", box: [8, 34, 1, 4, 13, 14], kind: "bench" },
+      { id: "row3", label: "Console row 3", box: [8, 34, 1, 4, 19, 20], kind: "bench" },
+      { id: "racks", label: "Equipment racks", box: [1, 2, 1, 10, 5, 24], kind: "rack" },
+    ],
+    doors: [],
+    vents: [
+      { id: "supply", label: "Ceiling diffusers", kind: "supply", face: "y1", a: [16, 26], b: [10, 18] },
+      { id: "return", label: "Return grille (back wall)", kind: "return", face: "z1", a: [14, 28], b: [2, 4] },
+    ],
+    detectors: [
+      { id: "ceil", label: "Ceiling, centre", zone: "room", i: 21, j: 14, k: 14, kind: "point" },
+      { id: "ceil2", label: "Ceiling, racks side", zone: "room", i: 6, j: 14, k: 14, kind: "point" },
+      { id: "return", label: "Return duct", zone: "room", i: 21, j: 3, k: 28, kind: "duct", vent: "return" },
+    ],
+    ignition: { i: 3, j: 6, k: 14, n: [1, 0, 0] }, walls: "panels", backdrop: "earth",
+    note: "A 12.6 × 8.4 m control room, 4.2 m high: the reference case, an ordinary room fire at 1 g.",
+  },
+);
+
+/** the rooms of one base, central habitat first */
+export const roomsOf = (world: Habitat["world"]) => HABITATS.filter((h) => h.world === world);
 
 export const habitatById = (id: string) => HABITATS.find((h) => h.id === id) ?? HABITATS[0];

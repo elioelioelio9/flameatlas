@@ -30,7 +30,7 @@ export default function Method() {
 
         <h3>Fire simulation model</h3>
         <p>
-          The simulation solves the flow in four habitats on a uniform 3-D grid (16–20 cm cells): the ISS Node 1 → US Lab → Node 2
+          The simulation is one continuous view of each base: the exterior model at true scale, and inside it the solver's grid for the room you enter. Each base has several rooms (the central habitat with its linked zones, plus modules and greenhouse domes); one room is computed at a time. The central habitats are solved on a uniform 3-D grid (16–20 cm cells): the ISS Node 1 → US Lab → Node 2
           (92 × 13 × 13 cells), a Moon base with lab, crew quarters and airlock (62 × 15 × 20), a two-deck Mars habitat
           (30 × 24 × 30 cells of 20 cm, round hull) and a conical crew capsule on the launch pad at 1 g (32 × 21 × 32). Bulkheads, partitions, benches, bunks and decks are solid cells;
           hatches and doors are openings you can close. The 3-D interior is generated from the same grid, so what you see is what the flow sees.

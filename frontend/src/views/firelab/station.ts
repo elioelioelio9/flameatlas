@@ -109,11 +109,10 @@ export function buildHabitatScene(hab: Habitat, sim: CabinFire): HabitatScene {
 
   // ------------------------------------------------ domain walls
   if (hab.walls === "racks" || hab.walls === "panels") {
-    const [rc, rb] = rackPair("iss"), [nc, nb] = rackPair("node");
+    const isLabUnused = false; void isLabUnused;
     const [pc, pb] = panelPair("#d5d3cc", 3), [gc, gb] = gratingPair();
     for (const z of hab.zones) {
       const x0 = (z.box[0] - 1) * dx, x1 = z.box[1] * dx, len = x1 - x0;
-      const isLab = z.id === "lab";
       const sides: [string, THREE.Euler, THREE.Vector3, number][] = [
         ["floor", new THREE.Euler(-Math.PI / 2, 0, 0), new THREE.Vector3(x0 + len / 2, 0, lz / 2), lz],
         ["ceiling", new THREE.Euler(Math.PI / 2, 0, 0), new THREE.Vector3(x0 + len / 2, ly, lz / 2), lz],
@@ -122,12 +121,11 @@ export function buildHabitatScene(hab: Habitat, sim: CabinFire): HabitatScene {
       ];
       for (const [name, rot, pos, w] of sides) {
         let map: THREE.Texture, bump: THREE.Texture, repU = 1, repV = 1;
-        if (hab.walls === "racks") { [map, bump] = isLab ? [rc, rb] : [nc, nb]; repU = len / (4 * 1.05); }
-        else if (name === "floor") { [map, bump] = [gc, gb]; repU = len / 1.2; repV = w / 1.2; }
+        if (name === "floor") { [map, bump] = [gc, gb]; repU = len / 1.2; repV = w / 1.2; }
         else { [map, bump] = [pc, pb]; repU = len / 2.4; repV = w / 2.4; }
         const m = map.clone(); m.needsUpdate = true; m.repeat.set(repU, repV);
         const b = bump.clone(); b.needsUpdate = true; b.repeat.set(repU, repV);
-        const mat = keep(new THREE.MeshStandardMaterial({ map: m, bumpMap: b, bumpScale: 1.6, roughness: 0.78, metalness: 0.05 }));
+        const mat = keep(name === "floor" ? new THREE.MeshStandardMaterial({ map: m, bumpMap: b, bumpScale: 1.6, roughness: 0.78, metalness: 0.05 }) : new THREE.MeshStandardMaterial({ color: name === "ceiling" ? 0xe6e4de : 0xd3d1ca, roughness: 0.9 }));
         const mesh = new THREE.Mesh(keep(new THREE.PlaneGeometry(len, w)), mat);
         mesh.rotation.copy(rot); mesh.position.copy(pos);
         if (name === "starboard") { const uv = mesh.geometry.attributes.uv as THREE.BufferAttribute; for (let q = 0; q < uv.count; q++) uv.setX(q, 1 - uv.getX(q)); }
@@ -139,7 +137,7 @@ export function buildHabitatScene(hab: Habitat, sim: CabinFire): HabitatScene {
     const gt = grilleTexture();
     for (const [x, rotY] of [[0, Math.PI / 2], [lx, -Math.PI / 2]] as const) {
       const mesh = new THREE.Mesh(keep(new THREE.PlaneGeometry(lz, ly)), keep(new THREE.MeshStandardMaterial({ map: hab.walls === "racks" ? gt : pc, roughness: 0.8 })));
-      mesh.rotation.y = rotY; mesh.position.set(x, ly / 2, lz / 2); mesh.userData = { surface: x === 0 ? "fwd" : "aft" };
+      mesh.rotation.y = rotY; mesh.position.set(x, ly / 2, lz / 2); mesh.userData = { surface: x === 0 ? "fwd" : "aft" }; (mesh.material as THREE.MeshStandardMaterial).map = null; (mesh.material as THREE.MeshStandardMaterial).color.set(0xcfcdc6);
       group.add(mesh); surfaces.push(mesh);
     }
   } else {
@@ -148,11 +146,12 @@ export function buildHabitatScene(hab: Habitat, sim: CabinFire): HabitatScene {
     const [pc, pb] = panelPair("#d9d4c8", 11), [gc, gb] = gratingPair();
     const m = pc.clone(); m.needsUpdate = true; m.repeat.set((2 * Math.PI * R) / 2.4, ly / 2.4);
     const b = pb.clone(); b.needsUpdate = true; b.repeat.copy(m.repeat);
-    const shell = new THREE.Mesh(keep(new THREE.CylinderGeometry(Rt, R, ly, 72, 1, true)), keep(new THREE.MeshStandardMaterial({ map: m, bumpMap: b, bumpScale: 1.4, roughness: 0.8, side: THREE.BackSide })));
+    const shellGeo = cyl.dome ? new THREE.SphereGeometry(R, 72, 24, 0, Math.PI * 2, Math.acos(Math.min(1, ly / R)), Math.PI / 2 - Math.acos(Math.min(1, ly / R))).translate(0, -ly / 2, 0) : new THREE.CylinderGeometry(Rt, R, ly, 72, 1, true);
+    const shell = new THREE.Mesh(keep(shellGeo), keep(new THREE.MeshStandardMaterial({ color: 0xd6d4cd, roughness: 0.9, side: THREE.BackSide })));
     shell.position.set(cx, ly / 2, cz); shell.userData = { surface: "shell" }; group.add(shell); surfaces.push(shell);
     for (const [y, up] of [[0, true], [ly, false]] as const) {
       const fm = (up ? gc : pc).clone(); fm.needsUpdate = true; fm.repeat.set((2 * R) / 1.2, (2 * R) / 1.2);
-      const disk = new THREE.Mesh(keep(new THREE.CircleGeometry(up ? R : Rt, 72)), keep(new THREE.MeshStandardMaterial({ map: fm, roughness: 0.85 })));
+      const disk = new THREE.Mesh(keep(new THREE.CircleGeometry(up ? R : cyl.dome ? Math.sqrt(Math.max(0, R * R - ly * ly)) : Rt, 72)), keep(up ? new THREE.MeshStandardMaterial({ map: fm, roughness: 0.85 }) : new THREE.MeshStandardMaterial({ color: 0xe6e4de, roughness: 0.9 })));
       disk.rotation.x = up ? -Math.PI / 2 : Math.PI / 2; disk.position.set(cx, y, cz); disk.userData = { surface: up ? "floor" : "ceiling" };
       group.add(disk); surfaces.push(disk);
     }
@@ -161,12 +160,12 @@ export function buildHabitatScene(hab: Habitat, sim: CabinFire): HabitatScene {
   // ------------------------------------------------ solids (voxel surface), rebuilt when doors change
   const solidGroup = new THREE.Group(); group.add(solidGroup);
   const furnMats = new Map<string, THREE.MeshStandardMaterial>();
-  const [dc, db] = gratingPair(); const [rc2, rb2] = rackPair("iss");
+  const [dc, db] = gratingPair(); const [rc2, rb2] = [dc, db];
   const matFor = (kind: Furniture["kind"]) => {
     if (!furnMats.has(kind)) {
       const opts: THREE.MeshStandardMaterialParameters = { color: FURN_COLOUR[kind], roughness: kind === "bench" ? 0.45 : 0.75, metalness: kind === "bulkhead" ? 0.25 : 0.06, side: THREE.DoubleSide };
       if (kind === "deck") { const t = dc.clone(); t.needsUpdate = true; t.repeat.set(1 / 1.2, 1 / 1.2); opts.map = t; opts.color = 0xffffff; }
-      if (kind === "rack" || kind === "locker") { const t = rc2.clone(); t.needsUpdate = true; t.repeat.set(1 / 4.2, 1 / 2.1); opts.map = t; opts.color = 0xffffff; const bb = rb2.clone(); bb.needsUpdate = true; bb.repeat.copy(t.repeat); opts.bumpMap = bb; opts.bumpScale = 1.2; }
+      if (false as boolean) { const t = rc2.clone(); t.needsUpdate = true; t.repeat.set(1 / 4.2, 1 / 2.1); opts.map = t; opts.color = 0xffffff; const bb = rb2.clone(); bb.needsUpdate = true; bb.repeat.copy(t.repeat); opts.bumpMap = bb; opts.bumpScale = 1.2; }
       furnMats.set(kind, keep(new THREE.MeshStandardMaterial(opts)));
     }
     return furnMats.get(kind)!;
@@ -247,8 +246,7 @@ export function buildHabitatScene(hab: Habitat, sim: CabinFire): HabitatScene {
         const fx = new THREE.Mesh(keep(new THREE.BoxGeometry(0.9, 0.05, 0.12)), lightMat); fx.position.set(x, ly - 0.06, zz); group.add(fx);
       }
     }
-    const rm = new THREE.InstancedMesh(keep(new THREE.BoxGeometry(0.5, 0.028, 0.028)), railMat, rails.length);
-    rails.forEach((m, q) => rm.setMatrixAt(q, m)); group.add(rm);
+    void rails; void railMat;
     // hatch frames on bulkhead doors
     const frameMat = keep(new THREE.MeshStandardMaterial({ color: 0x8d8a82, roughness: 0.45, metalness: 0.55 }));
     for (const d of hab.doors) {
@@ -258,7 +256,7 @@ export function buildHabitatScene(hab: Habitat, sim: CabinFire): HabitatScene {
         const m = new THREE.Mesh(keep(new THREE.BoxGeometry(dx + 0.12, h, w)), frameMat); m.position.set(x, y, z); group.add(m);
       }
     }
-    for (let q = 0; q < 3; q++) {
+    for (let q = 0; q < 0; q++) {
       const pts: THREE.Vector3[] = []; for (let x = 3.2; x <= 11.1; x += 0.9) pts.push(new THREE.Vector3(x, 0.06 + q * 0.035 + Math.sin(x * 2 + q) * 0.01, 0.07 + q * 0.03));
       group.add(new THREE.Mesh(keep(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 60, 0.014, 6)), cableMat));
     }

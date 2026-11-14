@@ -8,17 +8,19 @@ import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { ALARM, CabinFire, MATERIALS, type FlameState, type Params } from "../sim/firesim";
-import { habitatById, type Habitat } from "../sim/habitats";
+import { habitatById, roomsOf, type Habitat } from "../sim/habitats";
 import { useApp } from "../state";
 import { buildHabitatScene, buildIgnitionSource } from "./firelab/station";
 import { buildEnvironment } from "./firelab/environment";
 import { sliceMaterial, volumeMaterial } from "./firelab/shaders";
 import { cmap, cmapCss, CMAP_ID, type CMap } from "./firelab/colormaps";
-import { buildWorld, stageLights, WORLD_TEXT } from "../scenes/worlds";
+import { WORLD_TEXT } from "../scenes/worlds";
 import { Puffs } from "../scenes/particles";
 
 // ------------------------------------------------------------------ scenarios
-type WorldId = Habitat["id"];
+type WorldId = Habitat["world"];
+export interface RoomEntry { hab: string; room: string; zone: string; label: string }
+const roomEntries = (world: WorldId): RoomEntry[] => roomsOf(world).flatMap((h) => h.zones.length > 1 ? h.zones.map((z) => ({ hab: h.id, room: h.room, zone: z.id, label: z.name })) : [{ hab: h.id, room: h.room, zone: h.zones[0].id, label: h.short }]);
 export interface FirePreset { id: string; habitat: WorldId; label: string; g: number; vent: number; o2: number; p: number; material: string }
 export const PRESETS: FirePreset[] = [
   { id: "iss", habitat: "iss", label: "Ventilation on", g: 0, vent: 15, o2: 21, p: 101.3, material: "pmma" },
@@ -50,20 +52,23 @@ const FIELDS: Record<Exclude<SliceField, "off">, FieldDef> = {
 interface Hud {
   t: number; state: FlameState; hrr: number; minO2: number; maxT: number; area: number; charred: number; dp: number;
   det: { id: string; label: string; alarmAt: number | null; reading: number }[];
+  layer: number | null; smokeVol: number; headT: number; headO2: number; headS: number; far: boolean;
   div: number; it: number; cfl: number; ms: number; vmax: number; uref: number; range: [number, number] | null; sealed: boolean; rate: number;
 }
-const EMPTY: Hud = { t: 0, state: "idle", hrr: 0, minO2: 0.21, maxT: 0, area: 0, charred: 0, dp: 0, det: [], div: 0, it: 0, cfl: 0, ms: 0, vmax: 0, uref: 0.3, range: null, sealed: true, rate: 0 };
-type Live = { smoke: boolean; flames: boolean; vectors: boolean; density: number; slice: SliceField; axis: Axis; slicePos: number; volume: Volume; stream: boolean; speed: number; paused: boolean; marks: boolean; probe: boolean };
-type Api = { ignite: () => void; reset: () => void; door: (id: string, open: boolean) => void };
+const EMPTY: Hud = { layer: null, smokeVol: 0, headT: 0, headO2: 0.21, headS: 0, far: true, t: 0, state: "idle", hrr: 0, minO2: 0.21, maxT: 0, area: 0, charred: 0, dp: 0, det: [], div: 0, it: 0, cfl: 0, ms: 0, vmax: 0, uref: 0.3, range: null, sealed: true, rate: 0 };
+type Live = { vecNorm: boolean; smoke: boolean; flames: boolean; vectors: boolean; density: number; slice: SliceField; axis: Axis; slicePos: number; volume: Volume; stream: boolean; speed: number; paused: boolean; marks: boolean; probe: boolean };
+type Api = { ignite: () => void; reset: () => void; door: (id: string, open: boolean) => void; fly: (zone: string | null) => void };
 
 function download(name: string, text: string) { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type: "text/csv" })); a.download = name; a.click(); }
 
 // ================================================================== page
 export default function FireLab() {
-  const { firePreset, setFirePreset } = useApp();
-  const initial = PRESETS.find((p) => p.id === (firePreset ?? "").split(":")[0]) ?? PRESETS[0];
-  const [world, setWorld] = useState<WorldId>(initial.habitat);
-  const [view, setView] = useState<"inside" | "base">((firePreset ?? "").endsWith(":base") ? "base" : "inside");
+  const { firePreset, setFirePreset, fireSetup, setFireSetup, setEvidenceQuery, go } = useApp();
+  const initial = PRESETS.find((p) => p.id === (firePreset ?? "").split(":")[0]) ?? PRESETS.find((p) => p.habitat === fireSetup?.world) ?? PRESETS[0];
+  const [habId, setHabId] = useState<string>(initial.habitat);
+  const [focus, setFocus] = useState<string | null>(null);         // "hab/zone" the camera is in, null = overview of the base
+  const pendingFocus = useRef<string | null>(null);
+  const [linked, setLinked] = useState<string | null>(null);
   const [preset, setPreset] = useState(initial.id);
   const [g, setG] = useState(initial.g);
   const [vent, setVent] = useState(initial.vent);
@@ -91,7 +96,9 @@ export default function FireLab() {
   const [hud, setHud] = useState<Hud>(EMPTY);
   const [more, setMore] = useState(false);
 
-  const hab = habitatById(world);
+  const hab = habitatById(habId); const world = hab.world;
+  const entries = useMemo(() => roomEntries(world), [world]);
+  const [vecNorm, setVecNorm] = useState(false);
   const params: Params = useMemo(() => ({
     gravity: g, ventSpeed: vent / 100, ventReverse: reverse, o2: o2 / 100, pressureKpa: pressure, ambientC: ambient,
     material: MATERIALS.find((m) => m.id === materialId)!, fuelSize, igniter, confinement: turb,
@@ -101,9 +108,9 @@ export default function FireLab() {
   const paramsRef = useRef(params); paramsRef.current = params;
   const [marks, setMarks] = useState(false);
   const [probe, setProbe] = useState(false);
-  const live = useRef<Live>({ smoke, flames, vectors, density, slice, axis, slicePos, volume, stream, speed, paused, marks, probe });
+  const live = useRef<Live>({ vecNorm, smoke, flames, vectors, density, slice, axis, slicePos, volume, stream, speed, paused, marks, probe });
   const volEff: Volume = volume !== "off" ? volume : smoke ? "smoke" : "off";
-  live.current = { smoke, flames, vectors, density, slice, axis, slicePos, volume: volEff, stream, speed, paused, marks, probe };
+  live.current = { vecNorm, smoke, flames, vectors, density, slice, axis, slicePos, volume: volEff, stream, speed, paused, marks, probe };
   const api = useRef<Api | null>(null);
 
   useEffect(() => {
@@ -116,29 +123,47 @@ export default function FireLab() {
 
   const applyPreset = (pr: FirePreset) => {
     setPreset(pr.id); setG(pr.g); setVent(pr.vent); setO2(pr.o2); setPressure(pr.p); setMaterialId(pr.material); setReverse(false);
-    if (pr.habitat !== world) setWorld(pr.habitat);
+    if (pr.habitat !== world) { pendingFocus.current = null; setFocus(null); setHabId(pr.habitat); }
     else { const s = simRef.current; if (s) { s.setParams({ gravity: pr.g, ventSpeed: pr.vent / 100, ventReverse: false, o2: pr.o2 / 100, pressureKpa: pr.p, material: MATERIALS.find((m) => m.id === pr.material)! }); s.reset(); } }
   };
   useEffect(() => {
     if (!firePreset) return;
     const [id, v] = firePreset.split(":");
     const pr = PRESETS.find((p) => p.id === id); if (pr) applyPreset(pr);
-    setView(v === "base" ? "base" : "inside");
+    if (pr && v !== "base") { const z = habitatById(pr.habitat).zones[0].id; if (pr.habitat === world) { api.current?.fly(z); } else pendingFocus.current = z; setFocus(`${pr.habitat}/${z}`); }
     setFirePreset(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firePreset]);
+
+  // conditions handed over from an Evidence question
+  useEffect(() => {
+    if (!fireSetup) return;
+    const f = fireSetup; const pr = PRESETS.find((p) => p.habitat === (f.world ?? world))!;
+    applyPreset({ ...pr, id: "evidence", g: f.g ?? pr.g, o2: f.o2 ?? pr.o2, p: f.p ?? pr.p, vent: f.vent ?? pr.vent, material: f.material ?? pr.material });
+    setLinked(f.from); setFireSetup(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fireSetup]);
+  const pick = (e: RoomEntry | null) => {
+    if (!e) { setFocus(null); api.current?.fly(null); return; }
+    setFocus(`${e.hab}/${e.zone}`);
+    if (e.hab !== habId) { pendingFocus.current = e.zone; setHabId(e.hab); } else api.current?.fly(e.zone);
+  };
+  const pickRef = useRef(pick); pickRef.current = pick;
+  const askEvidence = () => {
+    const where = world === "iss" ? "in microgravity on the ISS" : world === "moon" ? "in lunar gravity in a Moon habitat" : world === "mars" ? "in martian gravity in a Mars habitat" : "at 1 g";
+    setEvidenceQuery(`${params.material.label.split(" (")[0]} fire ${where}, ${o2} % O2 at ${pressure.toFixed(0)} kPa, ${vent === 0 ? "ventilation off" : `airflow ${vent} cm/s`}`); go("evidence");
+  };
 
   const fd = slice !== "off" ? FIELDS[slice] : null;
   const range = hud.range ?? (fd ? fd.range(o2) : [0, 1]);
   const gLabel = g === 0 ? "0 g (orbit)" : `${(g / 9.81).toFixed(g < 9.81 ? 2 : 1)} g`;
   const status: Record<FlameState, string> = {
-    idle: "Press Ignite — or click a wall, rack or bench to move the fire there",
+    idle: hud.far ? "Pick a zone, or scroll in to enter the habitat" : "Press Ignite, or click a wall or a bench to move the fire there",
     igniting: `Igniter on · ${hud.t.toFixed(0)} s`,
     burning: `Burning · ${hud.t.toFixed(0)} s · ${hud.area.toFixed(2)} m² alight`,
     extinguished: `The flame went out after ${hud.t.toFixed(0)} s — oxygen starvation`,
     "burnt-out": `Fuel consumed after ${hud.t.toFixed(0)} s`,
   };
-  const enter = useMemo(() => () => setView("inside"), []);
 
   return (
     <div className="lab2">
@@ -146,20 +171,20 @@ export default function FireLab() {
         <nav className="seg big" aria-label="World">
           {WORLDS.map((w) => <button key={w.id} aria-pressed={world === w.id} onClick={() => applyPreset(PRESETS.find((p) => p.habitat === w.id)!)}>{w.label}</button>)}
         </nav>
-        <div className="seg" role="group" aria-label="View">
-          <button aria-pressed={view === "base"} onClick={() => setView("base")}>Base · outside</button>
-          <button aria-pressed={view === "inside"} onClick={() => setView("inside")}>Fire simulation · inside</button>
-        </div>
         <span className="grow" />
-        <p className="mono meta">{WORLD_TEXT[world].name} · {WORLD_TEXT[world].habitat}</p>
+        <p className="mono meta">{WORLD_TEXT[world].name}</p>
       </header>
+      <nav className="lab2-zones" aria-label="Zones of the base">
+        <button aria-pressed={focus === null} onClick={() => pick(null)}>Whole base</button>
+        {entries.map((e) => <button key={`${e.hab}/${e.zone}`} aria-pressed={focus === `${e.hab}/${e.zone}`} className={e.hab === habId ? "live" : ""} onClick={() => pick(e)}>{e.label}</button>)}
+        <span className="grow" />
+        <span className="mono small faint">simulated now: {hab.short}{hab.zones.length > 1 ? ` (${hab.zones.length} linked zones)` : ""} · {hab.nx}×{hab.ny}×{hab.nz} cells of {(hab.dx * 100).toFixed(0)} cm</span>
+      </nav>
+      {linked && <p className="lab2-linked">Conditions set from your Evidence question: “{linked}”. <button className="tlink inline" onClick={() => setLinked(null)}>Dismiss</button></p>}
 
-      {view === "base" ? (
-        <BaseView world={world} onEnter={enter} />
-      ) : (
         <div className="lab2-main">
           <section className="lab2-stage">
-            <Interior key={world} hab={hab} paramsRef={paramsRef} live={live} simRef={simRef} api={api} setHud={setHud} setDoors={setDoors} />
+            <Interior key={hab.id} hab={hab} entries={entries} pickRef={pickRef} pendingFocus={pendingFocus} paramsRef={paramsRef} live={live} simRef={simRef} api={api} setHud={setHud} setDoors={setDoors} />
             <div className="lab-status mono">{status[hud.state]}</div>
             {(fd || vectors) && (
               <div className="cmap-legend">
@@ -168,7 +193,7 @@ export default function FireLab() {
                   <div className="cl-bar" style={{ background: cmapCss(fd.cmap) }} />
                   <div className="cl-ticks mono"><span>{fd.fmt(range[0])}</span><span>{fd.fmt((range[0] + range[1]) / 2)}</span><span>{fd.fmt(range[1])}</span></div>
                 </>}
-                {vectors && <div className="cl-vec mono"><i />velocity · one spacing = {(hud.uref * 100).toFixed(hud.uref < 0.01 ? 2 : 1)} cm/s</div>}
+                {vectors && <div className="cl-vec mono"><i />{vecNorm ? "direction only (all arrows the same length)" : <>arrow of one spacing = {(hud.uref * 100).toFixed(1)} cm/s · below 0.3 cm/s not drawn</>}</div>}
               </div>
             )}
             <div className="stage-bar">
@@ -177,7 +202,7 @@ export default function FireLab() {
               <button className="tlink" onClick={() => api.current?.reset()}>Reset</button>
               <div className="seg" role="group" aria-label="Speed">{[1, 2, 4].map((s) => <button key={s} aria-pressed={speed === s} onClick={() => setSpeed(s)}>{s}×</button>)}</div>
               <span className="grow" />
-              <span className="mono small faint">drag to orbit · scroll to zoom · click a surface to move the fire there</span>
+              <span className="mono small faint">drag to orbit · scroll to zoom from the whole base into a room · click a surface to move the fire there</span>
             </div>
           </section>
 
@@ -185,6 +210,8 @@ export default function FireLab() {
             <div className="presets">
               {PRESETS.filter((p) => p.habitat === world).map((p) => <button key={p.id} className="chip-btn" aria-pressed={preset === p.id} onClick={() => applyPreset(p)}>{p.label}</button>)}
             </div>
+
+            <p className="small faint">{hab.note}</p>
 
             <h2 className="col-h">Environment</h2>
             <label className="range"><span>Gravity <b className="mono">{gLabel}</b></span><input type="range" min={0} max={30} step={0.01} value={g} onChange={(e) => setG(Number(e.target.value))} /></label>
@@ -215,6 +242,7 @@ export default function FireLab() {
               <div className="row"><span>Plane</span><div className="seg"><button aria-pressed={axis === "z"} onClick={() => setAxis("z")}>Lengthwise</button><button aria-pressed={axis === "x"} onClick={() => setAxis("x")}>Across</button><button aria-pressed={axis === "y"} onClick={() => setAxis("y")}>Horizontal</button></div></div>
               <label className="range"><span>Plane position <b className="mono">{Math.round(slicePos * 100)} %</b></span><input type="range" min={0} max={1} step={0.01} value={slicePos} onChange={(e) => setSlicePos(Number(e.target.value))} /></label>
             </>}
+            {vectors && <label className="check"><input type="checkbox" checked={vecNorm} onChange={(e) => setVecNorm(e.target.checked)} />Same length for all arrows (direction only)</label>}
             {vectors && <label className="range"><span>Vector spacing <b className="mono">{density.toFixed(1)} cells</b></span><input type="range" min={1} max={4} step={0.1} value={density} onChange={(e) => setDensity(Number(e.target.value))} /></label>}
             <button className="tlink small" onClick={() => setMore(!more)}>{more ? "Fewer options" : "More options"}</button>
             {more && <>
@@ -230,82 +258,37 @@ export default function FireLab() {
             {probe && <p className="small faint">While the probe is on, a click measures instead of moving the fire. The arrow is drawn at 2 m per m/s, so 10 cm of arrow is 5 cm/s of air. Click on the colour plane to measure inside the air.</p>}
             {marks && <p className="small faint">Pressure here is the dynamic part only (ρ·φ/Δt from the projection step), relative to the cabin mean. The uniform rise of a sealed cabin is in the readouts below.</p>}
 
+            <p className="small faint">Reading the flow: under a smoke layer the arrows often point down. That is the slow return flow that replaces the air the plume carries up; the smoke itself stays up because it is lighter. Arrow length is proportional to speed, so compare lengths before directions.</p>
+
             <h2 className="col-h">Readouts</h2>
             <dl className="kv">
               <div><dt>Peak temperature</dt><dd className="mono">{(ambient + hud.maxT).toFixed(0)} °C</dd></div>
               <div><dt>O₂ at the flame</dt><dd className="mono">{hud.state === "idle" ? "—" : `${(hud.minO2 * 100).toFixed(1)} %`} <span className="faint">limit {(params.material.limitO2 * 100).toFixed(1)} %</span></dd></div>
               <div><dt>Burning / charred</dt><dd className="mono">{hud.area.toFixed(2)} / {hud.charred.toFixed(2)} m²</dd></div>
               <div><dt>Cabin pressure rise</dt><dd className="mono">{hud.sealed ? `${hud.dp.toFixed(0)} Pa` : "vented"}</dd></div>
+              <div><dt>Smoke layer base</dt><dd className="mono">{hud.state === "idle" ? "—" : g < 0.05 ? "no layer without gravity" : hud.layer === null ? "no layer yet" : `${hud.layer.toFixed(1)} m above the floor`}</dd></div>
+              <div><dt>Volume in smoke</dt><dd className="mono">{(hud.smokeVol * 100).toFixed(0)} % <span className="faint">above alarm level</span></dd></div>
+              <div><dt>At head height (1.6 m)</dt><dd className="mono">{(ambient + hud.headT).toFixed(0)} °C · O₂ {(hud.headO2 * 100).toFixed(1)} %</dd></div>
             </dl>
             <canvas id="hrr" width={460} height={60} className="spark" />
             <ul className="alarms">
               {hud.det.map((d) => <li key={d.id} className={d.alarmAt !== null ? "on" : ""}><span>{d.label}</span><span className="mono">{d.alarmAt !== null ? `alarm at ${d.alarmAt.toFixed(0)} s` : hud.state === "idle" ? "—" : `${Math.min(99, (d.reading / ALARM) * 100).toFixed(0)} %`}</span></li>)}
             </ul>
             <p className="solver mono" title="Measured after every pressure solve">max |∇·u − S| {hud.div.toExponential(1)} s⁻¹ · PCG {hud.it} it · CFL {hud.cfl.toFixed(2)} · {hud.ms.toFixed(0)} ms/step · {hud.rate.toFixed(1)}× real time</p>
-            <button className="tlink small" onClick={() => simRef.current && download(`fire_lab_${world}.csv`, simRef.current.historyCsv())}>Export time series (CSV)</button>
+            <button className="tlink small" onClick={() => simRef.current && download(`fire_lab_${hab.id}.csv`, simRef.current.historyCsv())}>Export time series (CSV)</button>
+            <button className="tlink small" onClick={askEvidence}>NASA evidence for these conditions</button>
           </aside>
         </div>
-      )}
     </div>
-  );
-}
-
-// ================================================================== outside: the base diorama
-function BaseView({ world, onEnter }: { world: WorldId; onEnter: () => void }) {
-  const mountRef = useRef<HTMLDivElement>(null);
-  const tagRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    const mount = mountRef.current!;
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1;
-    mount.appendChild(renderer.domElement);
-    const scene = new THREE.Scene();
-    const pm = new THREE.PMREMGenerator(renderer); scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture; scene.environmentIntensity = 0.45;
-    const w = buildWorld(world, "high"); scene.add(w.group); const unstage = stageLights(scene, w);
-    const camera = new THREE.PerspectiveCamera(34, 1, 0.05, 500);
-    camera.position.copy(w.camera.pos).sub(w.camera.target).multiplyScalar(1.45).add(w.camera.target);
-    const controls = new OrbitControls(camera, renderer.domElement); controls.target.copy(w.camera.target); controls.enableDamping = true; controls.maxDistance = 30; controls.minDistance = 1.2; controls.maxPolarAngle = Math.PI * 0.49;
-    controls.autoRotate = true; controls.autoRotateSpeed = 0.35;
-    const composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera));
-    composer.addPass(new UnrealBloomPass(new THREE.Vector2(512, 512), 0.4, 0.4, 0.9)); composer.addPass(new OutputPass());
-    const resize = () => { const W = mount.clientWidth, H = mount.clientHeight; renderer.setSize(W, H, false); composer.setSize(W, H); renderer.domElement.style.width = "100%"; renderer.domElement.style.height = "100%"; camera.aspect = W / H; camera.updateProjectionMatrix(); w.setViewportHeight(H * renderer.getPixelRatio()); };
-    const ro = new ResizeObserver(resize); ro.observe(mount); resize();
-    const stop = () => { controls.autoRotate = false; };
-    renderer.domElement.addEventListener("pointerdown", stop);
-    const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), hp = new THREE.Vector3();
-    const onDbl = (e: MouseEvent) => {
-      const r = renderer.domElement.getBoundingClientRect(); ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
-      ray.setFromCamera(ndc, camera); const hit = ray.intersectObject(w.habitat, true)[0];
-      w.habitat.getWorldPosition(hp);
-      if (hit || ray.ray.distanceToPoint(hp) < 0.8) onEnter();
-    };
-    renderer.domElement.addEventListener("dblclick", onDbl);
-    let raf = 0, last = performance.now(), t = 0; const v = new THREE.Vector3();
-    const tick = (now: number) => {
-      raf = requestAnimationFrame(tick); const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now; t += dt;
-      w.update(dt, t); controls.update(); composer.render();
-      const tag = tagRef.current;
-      if (tag) { w.habitat.getWorldPosition(v); v.y += world === "iss" ? 0.5 : world === "earth" ? 0.4 : 0.9; v.project(camera); tag.style.transform = `translate(${((v.x + 1) / 2) * mount.clientWidth}px, ${((1 - v.y) / 2) * mount.clientHeight}px) translate(-50%, -100%)`; tag.style.display = v.z < 1 ? "block" : "none"; }
-    };
-    raf = requestAnimationFrame(tick);
-    return () => {
-      cancelAnimationFrame(raf); ro.disconnect(); renderer.domElement.removeEventListener("pointerdown", stop); renderer.domElement.removeEventListener("dblclick", onDbl);
-      unstage(); w.dispose(); controls.dispose(); composer.dispose(); pm.dispose(); renderer.dispose(); mount.removeChild(renderer.domElement);
-    };
-  }, [world, onEnter]);
-  return (
-    <section className="lab2-base">
-      <div className="lab2-canvas" ref={mountRef} />
-      <button ref={tagRef} className="base-tag" onClick={onEnter}>Simulation · {WORLD_TEXT[world].habitat} →</button>
-      <p className="base-hint mono">Drag to orbit · scroll to zoom · double-click the habitat (or its label) to go inside</p>
-    </section>
   );
 }
 
 // ================================================================== inside: the simulation
 interface InteriorProps {
   hab: Habitat;
+  entries: RoomEntry[];
+  pickRef: React.MutableRefObject<(e: RoomEntry | null) => void>;
+  pendingFocus: React.MutableRefObject<string | null>;
   paramsRef: React.MutableRefObject<Params>;
   live: React.MutableRefObject<Live>;
   simRef: React.MutableRefObject<CabinFire | null>;
@@ -314,7 +297,7 @@ interface InteriorProps {
   setDoors: (d: Record<string, boolean>) => void;
 }
 
-function Interior({ hab, paramsRef, live, simRef, api, setHud, setDoors }: InteriorProps) {
+function Interior({ hab, entries, pickRef, pendingFocus, paramsRef, live, simRef, api, setHud, setDoors }: InteriorProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const mount = mountRef.current!;
@@ -330,10 +313,20 @@ function Interior({ hab, paramsRef, live, simRef, api, setHud, setDoors }: Inter
     const pm = new THREE.PMREMGenerator(renderer); scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture; scene.environmentIntensity = 0.25;
     const env = buildEnvironment(hab, scene, sim, renderer);
     const camera = new THREE.PerspectiveCamera(46, 1, 0.05, 9000);
-    const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.minDistance = 0.5; controls.maxDistance = env.extent;
-    const L = Math.max(lx, lz);
-    if (hab.cylinder) { camera.position.set(lx / 2 - L * 0.32, ly * 0.95, -L * 0.62); controls.target.set(lx / 2, ly * 0.42, lz * 0.55); }
-    else { camera.position.set(lx / 2 - L * 0.12, ly + L * 0.3, lz + L * 0.38); controls.target.set(lx / 2 + L * 0.03, ly * 0.3, lz / 2); }
+    const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.minDistance = 0.5; controls.maxDistance = 16 * env.k; controls.zoomSpeed = 1.5;
+    if (hab.world !== "iss" && !(hab.world === "earth" && hab.fit === "main")) controls.maxPolarAngle = Math.PI * 0.497;
+    // one continuous view: the whole base from outside, and the same camera flown into a room
+    type Pose = { pos: THREE.Vector3; target: THREE.Vector3 };
+    const poseOf = (zone: string | null): Pose => {
+      if (zone === null) { const d = 7 * env.k; return { pos: new THREE.Vector3(lx / 2 + d * 0.55, ly / 2 + d * 0.4, lz / 2 + d * 0.72), target: new THREE.Vector3(lx / 2, ly / 2, lz / 2) }; }
+      const b = (hab.zones.find((z) => z.id === zone) ?? hab.zones[0]).box;
+      const cx = ((b[0] - 1 + b[1]) / 2) * dx, cy = ((b[2] - 1 + b[3]) / 2) * dx, cz = ((b[4] - 1 + b[5]) / 2) * dx, Lz = Math.max(3.5, (b[1] - b[0] + 1) * dx, (b[5] - b[4] + 1) * dx);
+      return { pos: new THREE.Vector3(cx - Lz * 0.14, cy + 0.4 + Lz * 0.72, cz + Lz * 0.74), target: new THREE.Vector3(cx, cy - 0.15, cz) };
+    };
+    const start = poseOf(pendingFocus.current); pendingFocus.current = null;
+    camera.position.copy(start.pos); controls.target.copy(start.target);
+    let flight: { from: Pose; to: Pose; t: number } | null = null;
+    const fly = (zone: string | null) => { flight = { from: { pos: camera.position.clone(), target: controls.target.clone() }, to: poseOf(zone), t: 0 }; };
 
     scene.add(new THREE.HemisphereLight(0xf0f0ed, 0x4a4842, 0.55));
     for (const z of hab.zones) { const b = z.box; const pl = new THREE.PointLight(0xfff4e6, hab.walls === "racks" ? 1.0 : 1.8, 9, 1.5); pl.position.set(((b[0] + b[1]) / 2 - 0.5) * dx, Math.min(ly - 0.2, (b[3] - 1) * dx - 0.15), lz / 2); scene.add(pl); }
@@ -403,11 +396,14 @@ function Interior({ hab, paramsRef, live, simRef, api, setHud, setDoors }: Inter
 
     // click: move the (single) fire to a surface and ignite it there
     const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(); let down: { x: number; y: number } | null = null;
-    const onDown = (e: PointerEvent) => { down = { x: e.clientX, y: e.clientY }; };
+    const onDown = (e: PointerEvent) => { down = { x: e.clientX, y: e.clientY }; flight = null; };
+    const onWheel = () => { flight = null; };
+    renderer.domElement.addEventListener("wheel", onWheel, { passive: true });
     const onUp = (e: PointerEvent) => {
       const d0 = down; down = null; if (!d0 || Math.hypot(e.clientX - d0.x, e.clientY - d0.y) > 5) return;
       const r = renderer.domElement.getBoundingClientRect(); ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
       ray.setFromCamera(ndc, camera);
+      if (farNow) return; // from outside, a click only orbits: enter a room first
       if (live.current.probe) { measureAt(); return; }
       const hit = ray.intersectObjects(habScene.surfaces, false)[0]; if (!hit) return;
       const nW = hit.face ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld) : new THREE.Vector3(0, 1, 0);
@@ -425,6 +421,7 @@ function Interior({ hab, paramsRef, live, simRef, api, setHud, setDoors }: Inter
       ignite: () => { if (sim.state !== "idle") { const s = sim.source; sim.reset(); if (s) sim.placeSource(s.i, s.j, s.k, s.n); smokeP.clear(); flameP.clear(); } sim.ignite(); },
       reset: () => { sim.reset(); smokeP.clear(); flameP.clear(); },
       door: (id, open) => { sim.setDoor(id, open); habScene.rebuildSolids(); setDoors({ ...sim.doorOpen }); },
+      fly,
     };
 
     // ---------------- field helpers
@@ -475,12 +472,13 @@ function Interior({ hab, paramsRef, live, simRef, api, setHud, setDoors }: Inter
       const Lv = live.current; arrows.visible = Lv.vectors; if (!Lv.vectors) return;
       const spacing = dx * Lv.density; const pts = planePoints(Lv.axis, Lv.slicePos, spacing);
       const vel = pts.map(([x, y, z]) => sim.velocity(x, y, z)); const sp = vel.map((v) => Math.hypot(v[0], v[1], v[2]));
-      const sorted = [...sp].sort((a, b) => a - b); uref = Math.max(2e-3, sorted[Math.floor(sorted.length * 0.92)] ?? 0.01);
+      // true scale: the reference speed never drops below 2 cm/s, so still air is drawn as (almost) nothing instead of being blown up
+      const sorted = [...sp].sort((a, b) => a - b); uref = Math.max(0.02, sorted[Math.floor(sorted.length * 0.92)] ?? 0.02);
       const thick = spacing * 3; let n = 0;
       for (let q = 0; q < pts.length && n < MAXA; q++) {
-        const s = sp[q]; if (s < uref * 0.04) continue;
+        const s = sp[q]; if (s < 0.003) continue;
         dirV.set(vel[q][0] / s, vel[q][1] / s, vel[q][2] / s); qt.setFromUnitVectors(upV, dirV);
-        pV.set(...pts[q]); scV.set(thick, Math.min(1.3, s / uref) * spacing * 0.95, thick); m4.compose(pV, qt, scV); arrows.setMatrixAt(n, m4);
+        pV.set(...pts[q]); scV.set(thick, (Lv.vecNorm ? 0.8 : Math.min(1.3, s / uref)) * spacing * 0.95, thick); m4.compose(pV, qt, scV); arrows.setMatrixAt(n, m4);
         const [r, g, b] = cmap("viridis", 0.15 + 0.85 * Math.min(1, s / uref)); arrows.setColorAt(n, colC.setRGB(r, g, b)); n++;
       }
       arrows.count = n; arrows.instanceMatrix.needsUpdate = true; if (arrows.instanceColor) arrows.instanceColor.needsUpdate = true;
@@ -562,12 +560,56 @@ function Interior({ hab, paramsRef, live, simRef, api, setHud, setDoors }: Inter
       probeEl.style.display = "block";
       probeEl.innerHTML = `<i></i><span>|u| <b>${(s * 100).toFixed(2)} cm/s</b><br>u, v, w ${(u * 100).toFixed(1)}, ${(v * 100).toFixed(1)}, ${(w2 * 100).toFixed(1)} cm/s<br>angle from vertical ${deg.toFixed(0)}° · arrow ${(s * scale * 100).toFixed(0)} cm<br>T ${(sim.params.ambientC + sim.T[c]).toFixed(0)} °C · O₂ ${(sim.Y[c] * 100).toFixed(1)} %<br>at x ${probePos.x.toFixed(2)} y ${probePos.y.toFixed(2)} z ${probePos.z.toFixed(2)} m</span>`;
     };
+    // room tags: every enterable zone of the base, clickable from any distance
+    const tagP = new THREE.Vector3();
+    const tags = entries.map((e) => {
+      const el = document.createElement("button"); el.className = `room-tag${e.hab === hab.id ? " live" : ""}`; el.textContent = e.label; el.onclick = () => pickRef.current(e); overlay.appendChild(el);
+      return { e, el };
+    });
+    const tagPos = (e: RoomEntry, out: THREE.Vector3) => {
+      if (e.hab !== hab.id) { env.roomPos(e.room, out); out.y += 0.6 * env.k; return out; }
+      const b = (hab.zones.find((z) => z.id === e.zone) ?? hab.zones[0]).box;
+      return out.set(((b[0] - 1 + b[1]) / 2) * dx, b[3] * dx + 0.5, ((b[4] - 1 + b[5]) / 2) * dx);
+    };
+    // the fire seen from outside: a glow that shines through the hull, and a label
+    const glowCv = document.createElement("canvas"); glowCv.width = glowCv.height = 64; { const gg = glowCv.getContext("2d")!; const gr = gg.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(0.25, "rgba(255,255,255,.55)"); gr.addColorStop(1, "rgba(255,255,255,0)"); gg.fillStyle = gr; gg.fillRect(0, 0, 64, 64); }
+    const glowTex = new THREE.CanvasTexture(glowCv);
+    const beacon = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, transparent: true, toneMapped: false })); beacon.visible = false; beacon.renderOrder = 8; scene.add(beacon);
+    const fireEl = markEl("fire"); fireEl.style.display = "none";
     const pj = new THREE.Vector3();
     const place = (el: HTMLElement, p: THREE.Vector3) => { pj.copy(p).project(camera); el.style.transform = `translate(${((pj.x + 1) / 2) * mount.clientWidth}px, ${((1 - pj.y) / 2) * mount.clientHeight}px)`; if (pj.z > 1) el.style.display = "none"; };
     const drawOverlay = () => {
       const on = live.current.marks && sim.state !== "idle";
       for (const m of marksL) { m.el.style.display = on ? "block" : "none"; if (on) place(m.el, m.pos); }
       updateProbe(); if (probeEl.style.display !== "none") place(probeEl, probePos);
+      const dist = camera.position.distanceTo(controls.target), far = dist > Math.max(lx, lz) * 1.6;
+      for (const tg of tags) {
+        const own = tg.e.hab === hab.id;
+        tg.el.style.display = own && !far && hab.zones.length < 2 ? "none" : "block";
+        tagPos(tg.e, tagP).project(camera); if (tagP.z > 1) { tg.el.style.display = "none"; continue; }
+        tg.el.style.transform = `translate(${((tagP.x + 1) / 2) * mount.clientWidth}px, ${((1 - tagP.y) / 2) * mount.clientHeight}px) translate(-50%, -100%)`;
+      }
+      const burning = flameLight.intensity > 0;
+      beacon.visible = burning && far; fireEl.style.display = burning && far ? "block" : "none";
+      if (burning && far) {
+        beacon.position.copy(flameLight.position); const dC = camera.position.distanceTo(flameLight.position);
+        beacon.scale.setScalar(dC * (0.035 + 0.008 * Math.sin(performance.now() / 90))); (beacon.material as THREE.SpriteMaterial).color.copy(flameLight.color);
+        fireEl.innerHTML = `<i></i><span>fire<b>${(sim.params.ambientC + sim.maxT).toFixed(0)} °C</b></span>`; place(fireEl, flameLight.position);
+      }
+      farNow = far;
+    };
+    let farNow = true;
+    // fire-engineering readouts: smoke layer base (lowest level whose mean smoke exceeds the alarm level), smoke-filled volume, conditions at head height
+    const layerStats = () => {
+      const sumS = new Float64Array(ny), cnt = new Float64Array(ny); let vol = 0, gas = 0; const jh = Math.min(ny - 1, Math.floor(1.6 / dx)); let hT = 0, hO = 0, hS = 0, hn = 0;
+      for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+        const c = i + nx * (j + ny * k); if (sim.solid[c]) continue;
+        sumS[j] += sim.S[c]; cnt[j]++; gas++; if (sim.S[c] > ALARM) vol++;
+        if (j === jh) { hT += sim.T[c]; hO += sim.Y[c]; hS += sim.S[c]; hn++; }
+      }
+      let layer: number | null = null;
+      if (cnt[ny - 1] > 0 && sumS[ny - 1] / cnt[ny - 1] > ALARM) { let j = ny - 1; while (j > 0 && cnt[j - 1] > 0 && sumS[j - 1] / cnt[j - 1] > ALARM) j--; layer = j * dx; }
+      return { layer, smokeVol: gas ? vol / gas : 0, headT: hn ? hT / hn : 0, headO2: hn ? hO / hn : sim.params.o2, headS: hn ? hS / hn : 0 };
     };
 
     // ---------------- loop
@@ -641,6 +683,11 @@ function Interior({ hab, paramsRef, live, simRef, api, setHud, setDoors }: Inter
       sim.detectors.forEach((d, q) => { const m = detMeshes[q].material as THREE.MeshStandardMaterial; m.emissive.set(d.alarmAt !== null ? (Math.floor(now / 400) % 2 ? 0xff3322 : 0x330000) : 0x000000); });
 
       envT += dtw; env.update(dtw, envT, camera);
+      if (flight) {
+        flight.t = Math.min(1, flight.t + dtw / 1.6); const e = flight.t < 0.5 ? 4 * flight.t ** 3 : 1 - (-2 * flight.t + 2) ** 3 / 2;
+        camera.position.lerpVectors(flight.from.pos, flight.to.pos, e); controls.target.lerpVectors(flight.from.target, flight.to.target, e);
+        if (flight.t >= 1) flight = null;
+      }
       controls.update(); composer.render();
       drawOverlay();
 
@@ -648,6 +695,7 @@ function Interior({ hab, paramsRef, live, simRef, api, setHud, setDoors }: Inter
         if (live.current.marks) findExtremes();
         hudT = now;
         setHud({
+          ...layerStats(), far: farNow,
           t: s && sim.state !== "idle" ? sim.time - s.ignitedAt : 0, state: sim.state, hrr: sim.hrr, minO2: sim.minO2, maxT: sim.maxT, area: sim.burningArea, charred: sim.charredArea, dp: sim.dpPa,
           det: sim.detectors.map((d) => ({ id: d.id, label: d.label, alarmAt: d.alarmAt === null ? null : d.alarmAt - (s?.ignitedAt ?? 0), reading: d.reading })),
           div: sim.divMax, it: sim.pcgIters, cfl: (sim.maxSpeed * DT) / dx, ms: sim.stepMs, vmax: sim.maxSpeed, uref, range: curRange, sealed: sim.sealed, rate: wallClock > 0 ? simClock / wallClock : 0,
@@ -660,6 +708,7 @@ function Interior({ hab, paramsRef, live, simRef, api, setHud, setDoors }: Inter
     (window as unknown as { __fa?: unknown }).__fa = { sim, api: api.current };
     return () => {
       cancelAnimationFrame(raf); ro.disconnect();
+      renderer.domElement.removeEventListener("wheel", onWheel); glowTex.dispose();
       renderer.domElement.removeEventListener("pointerdown", onDown); renderer.domElement.removeEventListener("pointerup", onUp);
       env.dispose(); overlay.remove(); habScene.dispose(); smokeP.dispose(); flameP.dispose(); pm.dispose(); controls.dispose(); composer.dispose(); renderer.dispose();
       mount.removeChild(renderer.domElement); simRef.current = null;

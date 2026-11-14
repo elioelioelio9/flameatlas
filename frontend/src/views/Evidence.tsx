@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as d3 from "d3";
 import { api } from "../api";
 import { MiniMarkdown } from "../components/ui";
-import { useApp } from "../state";
+import { useApp, type FireSetup } from "../state";
 import type { CoverageResponse, Insight, RankResponse } from "../types";
 
 type NodeType = "document" | "concept" | "entity" | "data" | "research" | "query";
@@ -50,6 +50,27 @@ const NEED_TEXT: Record<string, string> = {
   materials: "Materials are qualified on Earth by burning them upward in still air. Without buoyancy the flame lives in a different flow, and some materials keep burning at oxygen levels where the Earth test says they stop.",
   detection: "Smoke does not rise in orbit. It goes where the ventilation sends it, slowly, and its particles are larger. Where a detector sits, and how fast it sees the smoke, comes from the airflow, not the ceiling.",
 };
+const SIM_WORLDS = { iss: ["ISS", 0, 21, 101.3], moon: ["Moon base", 1.62, 34, 56.5], mars: ["Mars habitat", 3.71, 30, 70], earth: ["Earth", 9.81, 21, 101.3] } as const;
+const SIM_MATERIALS: [RegExp, string, string][] = [[/cotton|fabric|cloth|textile/i, "cotton", "Cotton fabric"], [/pmma|acrylic|plexi/i, "pmma", "PMMA (acrylic)"], [/paper|cardboard/i, "paper", "Paper / cardboard"], [/foam|polyurethane/i, "foam", "Polyurethane foam"], [/cable|wire|pvc|insulation/i, "cable", "Cable insulation"], [/velcro|nylon/i, "velcro", "Velcro (nylon)"], [/nomex/i, "nomex", "Nomex"]];
+/** what the simulation can take from a question: the world, its atmosphere, the airflow and the material; anything not said keeps the planned value of that habitat */
+function toSetup(q: string, rank: RankResponse): { setup: FireSetup; lines: [string, string, string][] } | null {
+  const sc = rank.scenario; const t = `${q} ${sc.habitat ?? ""} ${sc.gravity ?? ""}`.toLowerCase();
+  const world = /mars|martian|martien/.test(t) ? "mars" : /moon|lunar|lunaire|lune|artemis/.test(t) ? "moon" : /earth|1 ?g\b|normal gravity|ground|terre/.test(t) ? "earth" : /iss|station|orbit|microgravity|micro-g|0 ?g\b/.test(t) ? "iss" : null;
+  const mat = SIM_MATERIALS.find(([re]) => re.test(q));
+  const off = /(fans?|ventilation|airflow|air flow)\s*(is |are |shut |turned |switched )?(off|down|stopped)|no (air ?)?flow|quiescent|still air|sans ventilation/i.test(q);
+  if (!world && !mat && sc.o2_pct == null && sc.pressure_kpa == null && sc.flow_cm_s == null && !off) return null;
+  const w = world ?? "iss"; const [name, g, o2d, pd] = SIM_WORLDS[w];
+  const o2 = sc.o2_pct ?? o2d, p = sc.pressure_kpa ?? pd, vent = off ? 0 : sc.flow_cm_s != null ? Math.min(50, Math.round(sc.flow_cm_s)) : undefined;
+  const lines: [string, string, string][] = [
+    ["Base", name, world ? "from the question" : "default"],
+    ["Gravity", g === 0 ? "0 g" : `${(g / 9.81).toFixed(2)} g`, ""],
+    ["Oxygen", `${o2} %`, /%|percent|o2|oxyg/i.test(q) && sc.o2_pct != null ? "from the question" : "planned for this habitat"],
+    ["Pressure", `${Math.round(p * 10) / 10} kPa`, /kpa|psi|bar\b|atm\b/i.test(q) && sc.pressure_kpa != null ? "from the question" : "planned for this habitat"],
+  ];
+  if (vent !== undefined) lines.push(["Airflow", vent === 0 ? "fans off" : `${vent} cm/s`, "from the question"]);
+  if (mat) lines.push(["Material", mat[2], "from the question"]);
+  return { setup: { world: w, g, o2, p, vent, material: mat?.[1], from: q }, lines };
+}
 const KIND: Record<string, string> = { psi_text: "Stated by NASA", computed_from_table: "Computed from test tables", hypothesis: "Hypothesis to test" };
 const ASKS = ["Does turning off the fans put out a fire?", "What is missing for the Moon?", "Which materials burn at 34 % oxygen?", "How fast does a detector see smoke in microgravity?"];
 const HAB_WORDS: [RegExp, string][] = [[/moon|lunar|artemis/i, "lunar_base"], [/mars|martian/i, "mars_habitat"], [/suit|eva\b/i, "eva_suit"], [/34 ?%|8\.2 ?psi/i, "exploration_34"], [/26\.5|10\.2 ?psi/i, "exploration_26"], [/iss|station/i, "iss"]];
@@ -131,7 +152,7 @@ function CoverageChart({ cov, focus }: { cov: CoverageResponse; focus: string })
 
 // ------------------------------------------------------------------ page
 export default function Evidence() {
-  const { openDrawer, byAcc } = useApp();
+  const { openDrawer, byAcc, go, setFireSetup, evidenceQuery, setEvidenceQuery } = useApp();
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [data, setData] = useState<{ nodes: KNode[]; edges: KEdge[] } | null>(null);
@@ -309,6 +330,9 @@ export default function Evidence() {
       setRes(r); setRank(rk);
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
+  // a question handed over by the simulation ("NASA evidence for these conditions")
+  useEffect(() => { if (evidenceQuery) { const q = evidenceQuery; setEvidenceQuery(null); ask(q); } /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [evidenceQuery]);
+  const setup = useMemo(() => (res && rank ? toSetup(res.query, rank) : null), [res, rank]);
   const clear = () => { setRes(null); setRank(null); setCovFocus(null); setQuery(""); setFocus(null); window.setTimeout(() => ctl.current?.fit(null), 500); };
   const upload = async (files: FileList | null) => {
     if (!files?.length) return;
@@ -411,6 +435,13 @@ export default function Evidence() {
               <>
                 <p className="kind"><i style={{ background: "#fff" }} />Answer · every line is quoted from a source</p>
                 <h2>{res.query}</h2>
+                {setup && (
+                  <div className="ev-sim">
+                    <h3>Run this case in the simulation</h3>
+                    <dl className="ev-facts">{setup.lines.map(([k, v, why]) => <div key={k}><dt>{k}</dt><dd>{v} <span className="faint">{why}</span></dd></div>)}</dl>
+                    <button className="cta" onClick={() => { setFireSetup(setup.setup); go("firelab"); }}>Open the simulation with these conditions →</button>
+                  </div>
+                )}
                 {covFocus && cov && <CoverageChart cov={cov} focus={covFocus} />}
                 {rank && rank.results.length > 0 && <>
                   <h3>Most relevant investigations</h3>
