@@ -1,6 +1,6 @@
 # Credits and provenance of visual assets
 
-Every image and model used by FlameAtlas is authentic NASA material (US Government work, not subject to copyright in the US; NASA media usage guidelines apply: https://www.nasa.gov/nasa-brand-center/images-and-media/). No image is AI-generated.
+Every image and model used by Fire Lab is authentic NASA material (US Government work, not subject to copyright in the US; NASA media usage guidelines apply: https://www.nasa.gov/nasa-brand-center/images-and-media/). No image is AI-generated.
 
 ## Photographs (`frontend/public/assets/photos/`)
 
@@ -16,7 +16,7 @@ Downloaded from the NASA Image and Video Library (images.nasa.gov); metadata in 
 | nasa_GRC-2016-C-05051.jpg | GRC-2016-C-05051 | ACME chamber insert, gas-jet burner | https://images.nasa.gov/details/GRC-2016-C-05051 |
 | nasa_iss042e021318.jpg | ISS042-E-021318 | Destiny (US Lab) interior at night, 3 Dec 2014 | https://images.nasa.gov/details/iss042e021318 |
 | nasa_iss062e148363.jpg | ISS062-E-148363 | Aurora australis and Earth glow from the ISS | https://images.nasa.gov/details/iss062e148363 |
-| nasa_iss040e080833.jpg | ISS040-E-080833 | Sunrise over the Earth limb (Fire lab backdrop, ISS) | https://images.nasa.gov/details/iss040e080833 |
+| nasa_iss040e080833.jpg | ISS040-E-080833 | Sunrise over the Earth limb (Simulation backdrop, ISS) | https://images.nasa.gov/details/iss040e080833 |
 | nasa_jsc2004e20304.jpg | JSC2004E20304 | Apollo 17 Station 5 panorama, Taurus-Littrow (Moon base backdrop, downscaled to 4096 px) | https://images.nasa.gov/details/jsc2004e20304 |
 | nasa_PIA25176.jpg, pano_mars.webp | PIA25176 | Curiosity Mastcam 360° panorama, Gator-Back rocks — NASA/JPL-Caltech/MSSS. `pano_mars.webp` is the same image with the black mosaic gaps made transparent (no other change) | https://images.nasa.gov/details/PIA25176 |
 | nasa_PIA19679.jpg | PIA19679 | Curiosity Navcam 360° panorama, Sol 1000 — NASA/JPL-Caltech (downscaled) | https://images.nasa.gov/details/PIA19679 |
@@ -36,7 +36,7 @@ Downloaded from the NASA Image and Video Library (images.nasa.gov); metadata in 
 |---|---|---|
 | iss.glb | International Space Station (B), NASA 3D Resources | https://science.nasa.gov/3d-resources/ |
 
-The habitat interiors in the Fire lab (ISS modules, Moon base, Mars habitat) are schematics generated from the simulation grid itself (rack faces, partitions, benches, decks, hatches, handrails, lights), not photographs and not renders presented as real; the interface labels them as models. NASA 3D Resources provides no free interior model of the station (checked), so none was used.
+The habitat interiors in the simulation (ISS modules, Moon base, Mars habitat) are schematics generated from the simulation grid itself (rack faces, partitions, benches, decks, hatches, handrails, lights), not photographs and not renders presented as real; the interface labels them as models. NASA 3D Resources provides no free interior model of the station (checked), so none was used.
 
 ## Software
 

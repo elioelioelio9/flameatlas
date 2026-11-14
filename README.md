@@ -1,9 +1,9 @@
-# FlameAtlas
+# Fire Lab
 
 **Fire-safety evidence from NASA microgravity combustion data.**
 NASA Space Apps Challenge 2026 — *Flame in Freefall: SI-powered fire safety insights from microgravity combustion data.*
 
-FlameAtlas turns the combustion investigations of NASA's [Physical Sciences Informatics (PSI)](https://psi.nasa.gov/physci/repo/search?q=combustion) repository into answers an engineer can act on:
+Fire Lab turns the combustion investigations of NASA's [Physical Sciences Informatics (PSI)](https://psi.nasa.gov/physci/repo/search?q=combustion) repository into answers an engineer can act on:
 
 - **which experiments matter** for a given fire-safety need and habitat,
 - **what their tested conditions actually cover** — and where the evidence stops,
@@ -17,7 +17,7 @@ FlameAtlas turns the combustion investigations of NASA's [Physical Sciences Info
 
 **Mission.** Earth, the ISS, the Moon and Mars. Each world carries a miniature base (launch pad with a rocket lifting off, the ISS in orbit, a Moon village, a Mars outpost) with astronauts and rovers moving around it. Click a world to fly to its base, scroll in on the base to enter its fire simulation. Below: the physics in one paragraph, two NASA flight photographs, and the applications on Earth.
 
-**Fire lab.** A 3-D fire simulation inside four habitats — ISS (Node 1 → US Lab → Node 2), a Moon base (lab, crew quarters, airlock), a two-deck Mars habitat, a crew capsule on the launch pad — each also shown from outside as a detailed diorama.
+**Simulation.** A 3-D fire simulation inside four habitats — ISS (Node 1 → US Lab → Node 2), a Moon base (lab, crew quarters, airlock), a two-deck Mars habitat, a crew capsule on the launch pad — each also shown from outside as a detailed diorama.
 
 - **Physics**: 3-D low-Mach Navier–Stokes on a staggered (MAC) grid with immersed solids, buoyancy from the full temperature ratio, thermal expansion of the burnt gas (∇·u = S), MIC(0)-preconditioned conjugate-gradient pressure solve to max |∇·u − S| < 5·10⁻⁵ s⁻¹ (the residual is displayed live), clamped MacCormack advection of heat, O₂, CO₂ and smoke. Sealed cabins get a thermodynamic pressure rise; every closed gas region (e.g. behind a shut hatch) is solved with its own compatibility condition.
 - **Fire**: one source — a fuel panel on any surface (click to move it), material-specific oxygen limits, spread (faster downstream and uphill), burnout, starvation.
@@ -38,7 +38,7 @@ The fire model is tuned to reproduce qualitative trends in the PSI data; it is l
 
 The three objectives of the challenge and its Earth add-on each map to a module:
 
-| Challenge objective | FlameAtlas module | What you get |
+| Challenge objective | Fire Lab module | What you get |
 |---|---|---|
 | Identify investigations most relevant to habitable crew environments | **Evidence** (question bar, coverage map) | Ranking with a visible score and reason, plus the tests that fall inside each planned atmosphere |
 | Extract data that supports predictive modelling | **Data & method** | A unified table of 2,060 records / 7,688 measurements across 24 investigations, filtered and exported as a ZIP with data dictionary, provenance and limitations |
@@ -53,7 +53,7 @@ All of these are computed from the NASA tables or quoted from PSI records, never
 - **More oxygen, fewer self-extinctions.** In FLEX (N2-only atmospheres), methanol flames went out before burnout in 9 of 12 tests at 21 % O2, but in only 2 of 13 at 30–34 %. For heptane, the counts are 5 of 17 at 21 % versus 0 of 11.
 - **Cutting ventilation may not be enough.** ACME BRE observed flames that emulate burning solids keep burning without airflow in elevated-O2 atmospheres. At 21 % O2, the same flames self-extinguished. PSI flags these results as preliminary.
 - **1 g and microgravity can rank materials differently.** In SAFFIRE-II, all four silicone samples barely burned in microgravity at 20 cm/s, while two of the four matching 1-g reference burns were complete.
-- **There are no partial-gravity combustion data yet.** FlameAtlas never treats Moon or Mars conditions as microgravity: those results are shown as *bounded only*.
+- **There are no partial-gravity combustion data yet.** Fire Lab never treats Moon or Mars conditions as microgravity: those results are shown as *bounded only*.
 
 | Ranking with explanations | Coverage map |
 |---|---|
@@ -223,7 +223,7 @@ docs/             screenshots, demo script
   - All flight data are microgravity.
   - The Moon and Mars envelopes are planning assumptions taken from the challenge statement and from PSI-20.
   - Fits are descriptive and valid only inside the measured range.
-  - FlameAtlas does not predict whether a given material will burn.
+  - Fire Lab does not predict whether a given material will burn.
 
 ## Use of AI
 

@@ -1,7 +1,7 @@
 """Thin LLM client (Anthropic or OpenAI) using only the standard library.
 
 The model is used to *phrase* answers from passages and numbers that the application has already
-retrieved and computed. If no key is configured or the call fails, FlameAtlas falls back to a
+retrieved and computed. If no key is configured or the call fails, Fire Lab falls back to a
 deterministic extractive answer, so the product never depends on the API being up.
 """
 

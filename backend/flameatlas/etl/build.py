@@ -1,4 +1,4 @@
-"""Build the FlameAtlas SQLite database from the raw PSI corpus.
+"""Build the Fire Lab SQLite database from the raw PSI corpus.
 
     python -m flameatlas.etl.build            # -> data/flameatlas.db + data/processed/*
 
@@ -295,7 +295,7 @@ def export_processed(conn: sqlite3.Connection, out_dir: Path = PROCESSED_DIR) ->
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Build the FlameAtlas database from the PSI corpus")
+    ap = argparse.ArgumentParser(description="Build the Fire Lab database from the PSI corpus")
     ap.add_argument("--db", type=Path, default=None)
     ap.add_argument("--corpus", type=Path, default=None)
     ap.add_argument("--no-processed", action="store_true")

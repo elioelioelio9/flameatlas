@@ -1,5 +1,5 @@
 /**
- * FlameAtlas cabin-fire model — an *educational* 2-D mid-plane simulation of a fire in a habitat module.
+ * Fire Lab cabin-fire model — an *educational* 2-D mid-plane simulation of a fire in a habitat module.
  *
  * Physics (incompressible, Boussinesq):
  *   ∂u/∂t + (u·∇)u = −∇p/ρ + g β ΔT ŷ          (Navier–Stokes, numerical viscosity only)

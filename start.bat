@@ -1,5 +1,5 @@
 @echo off
-REM FlameAtlas - start the app (API + UI) on http://127.0.0.1:8000 and open it.
+REM Fire Lab - start the app (API + UI) on http://127.0.0.1:8000 and open it.
 setlocal
 cd /d "%~dp0"
 if not exist .venv\Scripts\uvicorn.exe ( echo Lance d'abord setup.bat. & pause & exit /b 1 )
@@ -12,7 +12,7 @@ echo ==^> Build du frontend...
 call npm run build || ( popd & echo ARRET: build echoue & pause & exit /b 1 )
 popd
 start "" "http://127.0.0.1:8000"
-echo FlameAtlas tourne sur http://127.0.0.1:8000  (docs API: /docs). Ferme cette fenetre pour arreter.
+echo Fire Lab tourne sur http://127.0.0.1:8000  (docs API: /docs). Ferme cette fenetre pour arreter.
 cd backend
 ..\.venv\Scripts\uvicorn.exe flameatlas.api.main:app --host 127.0.0.1 --port 8000
 pause

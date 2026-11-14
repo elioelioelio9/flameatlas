@@ -163,7 +163,7 @@ def build_zip(repo: Repository, req: ExtractRequest) -> tuple[bytes, dict[str, A
                 "psi_url": invs[a]["psi_url"], "psi_version": invs[a]["psi_version"], "license": invs[a]["license"]}
                for a in result["accessions"] if a in invs]
     provenance = {
-        "generated_by": f"FlameAtlas {__version__}", "generated_at": now, "n_rows": result["total"],
+        "generated_by": f"Fire Lab {__version__}", "generated_at": now, "n_rows": result["total"],
         "request": asdict(req), "sources": sources, "database": repo.meta(),
         "transformations": [
             "Pressure converted to kPa from mmHg (×0.133322), atm (×101.325), bar (×100), psia (×6.894757).",

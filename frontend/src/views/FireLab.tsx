@@ -231,7 +231,7 @@ export default function FireLab() {
               {hud.det.map((d) => <li key={d.id} className={d.alarmAt !== null ? "on" : ""}><span>{d.label}</span><span className="mono">{d.alarmAt !== null ? `alarm at ${d.alarmAt.toFixed(0)} s` : hud.state === "idle" ? "—" : `${Math.min(99, (d.reading / ALARM) * 100).toFixed(0)} %`}</span></li>)}
             </ul>
             <p className="solver mono" title="Measured after every pressure solve">max |∇·u − S| {hud.div.toExponential(1)} s⁻¹ · PCG {hud.it} it · CFL {hud.cfl.toFixed(2)} · {hud.ms.toFixed(0)} ms/step · {hud.rate.toFixed(1)}× real time</p>
-            <button className="tlink small" onClick={() => simRef.current && download(`flameatlas_${world}.csv`, simRef.current.historyCsv())}>Export time series (CSV)</button>
+            <button className="tlink small" onClick={() => simRef.current && download(`fire_lab_${world}.csv`, simRef.current.historyCsv())}>Export time series (CSV)</button>
           </aside>
         </div>
       )}
@@ -286,7 +286,7 @@ function BaseView({ world, onEnter }: { world: WorldId; onEnter: () => void }) {
   return (
     <section className="lab2-base">
       <div className="lab2-canvas" ref={mountRef} />
-      <button ref={tagRef} className="base-tag" onClick={onEnter}>Fire lab · {WORLD_TEXT[world].habitat} →</button>
+      <button ref={tagRef} className="base-tag" onClick={onEnter}>Simulation · {WORLD_TEXT[world].habitat} →</button>
       <p className="base-hint mono">Drag to orbit · scroll to zoom · double-click the habitat (or its label) to go inside</p>
     </section>
   );

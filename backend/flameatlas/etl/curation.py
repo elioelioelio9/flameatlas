@@ -377,7 +377,7 @@ EARTH_APPLICATIONS = [
 
 # --------------------------------------------------------------------------- variable dictionary
 VARIABLES = [
-    ("test_id", "Test identifier", None, "test", "FlameAtlas id: <PSI accession>:<table>:<row index>"),
+    ("test_id", "Test identifier", None, "test", "Fire Lab id: <PSI accession>:<table>:<row index>"),
     ("accession", "PSI accession", None, "test", "PSI investigation identifier (cite with its DOI)"),
     ("record_type", "Record type", None, "test", "test (one run) | session (one day/condition) | test_matrix (planned ranges) | data_reference"),
     ("source_file", "Source file", None, "test", "PSI experimental-table file the record was parsed from"),

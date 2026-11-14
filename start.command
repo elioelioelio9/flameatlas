@@ -1,5 +1,5 @@
 #!/bin/bash
-# FlameAtlas — start the app (API + UI) on http://127.0.0.1:8000 and open it.
+# Fire Lab — start the app (API + UI) on http://127.0.0.1:8000 and open it.
 # Rebuilds the front-end automatically when its sources or packages changed.
 trap 'echo; read -r -p "Appuie sur Entrée pour fermer cette fenêtre…" _' EXIT
 cd "$(dirname "$0")" || exit 1
@@ -19,5 +19,5 @@ if [ ! -f frontend/dist/index.html ] || [ -n "$(find frontend/src frontend/publi
   (cd frontend && npm run build) || { echo "ARRÊT: build échoué"; exit 1; }
 fi
 ( sleep 3 && open "http://127.0.0.1:8000" ) &
-echo "FlameAtlas tourne sur http://127.0.0.1:8000  (docs API : /docs). Ferme cette fenêtre ou Ctrl+C pour arrêter."
+echo "Fire Lab tourne sur http://127.0.0.1:8000  (docs API : /docs). Ferme cette fenêtre ou Ctrl+C pour arrêter."
 cd backend && ../.venv/bin/uvicorn flameatlas.api.main:app --host 127.0.0.1 --port 8000

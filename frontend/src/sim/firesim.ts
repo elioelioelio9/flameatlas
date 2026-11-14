@@ -1,5 +1,5 @@
 /**
- * FlameAtlas cabin-fire solver — 3-D low-Mach Navier–Stokes on a staggered (MAC) grid with immersed solids.
+ * Fire Lab cabin-fire solver — 3-D low-Mach Navier–Stokes on a staggered (MAC) grid with immersed solids.
  *
  *   ∂u/∂t + (u·∇)u = −∇p/ρ + g (T − T∞)/T ŷ + f_vc             momentum, Boussinesq-type buoyancy (full ratio)
  *   ∇·u = S − S̄_sealed,   S = (1/T) (DT/Dt)_combustion          low-Mach expansion of the burnt gas

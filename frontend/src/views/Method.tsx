@@ -6,7 +6,7 @@ export default function Method() {
   return (
     <>
       <PageHead title="Method & sources">
-        How FlameAtlas turns NASA records into rankings, maps and extracts — and where its limits are.
+        How Fire Lab turns NASA records into rankings, maps and extracts — and where its limits are.
       </PageHead>
       <div className="prose">
         <h3>Data</h3>
@@ -28,9 +28,9 @@ export default function Method() {
           investigations matched the search only by keyword (solders, thermocapillary flow) and are kept but marked out of scope.
         </p>
 
-        <h3>Fire lab model</h3>
+        <h3>Fire simulation model</h3>
         <p>
-          The Fire lab solves the flow in four habitats on a uniform 3-D grid (16–20 cm cells): the ISS Node 1 → US Lab → Node 2
+          The simulation solves the flow in four habitats on a uniform 3-D grid (16–20 cm cells): the ISS Node 1 → US Lab → Node 2
           (92 × 13 × 13 cells), a Moon base with lab, crew quarters and airlock (62 × 15 × 20), a two-deck Mars habitat
           (30 × 24 × 30, round hull) and the ISS mockup at 1 g. Bulkheads, partitions, benches, bunks and decks are solid cells;
           hatches and doors are openings you can close. The 3-D interior is generated from the same grid, so what you see is what the flow sees.
@@ -78,10 +78,10 @@ export default function Method() {
           Questions in English or French are parsed by rules for the need, fuel phase, gravity, habitat, O2, pressure
           and flow. Passages are retrieved by fusing two rankings: SQLite FTS5 / BM25 with stemming, and TF-IDF cosine
           similarity on words and character n-grams. Answers may cite only the numbered sources they are given. Without
-          an API key, FlameAtlas returns an extractive answer quoted from those sources.
+          an API key, Fire Lab returns an extractive answer quoted from those sources.
         </p>
 
-        <h3>What FlameAtlas does not do</h3>
+        <h3>What Fire Lab does not do</h3>
         <ul>
           <li>It does not predict whether a given material will burn. Fits are descriptive, within the measured range.</li>
           <li>It does not turn single observations into procedures; insight cards pose design questions.</li>
@@ -91,7 +91,7 @@ export default function Method() {
 
         <h3>Use of AI</h3>
         <p>
-          FlameAtlas was built with help from an AI coding assistant. In the product, an optional language model only
+          Fire Lab was built with help from an AI coding assistant. In the product, an optional language model only
           rephrases retrieved passages and computed numbers, with mandatory citations. All rankings, statistics, unit
           conversions and exports are deterministic Python.
         </p>
@@ -122,7 +122,7 @@ export default function Method() {
         <h3>Image credits</h3>
         <p>All photographs are authentic NASA images from the NASA Image and Video Library: GRC-1998-C-00485 (candle in 1 g and microgravity),
           ISS035-E-016429 and ISS040-E-072900 (BASS, BASS-II), JSC2023E046631 (Saffire-IV), GRC-2016-C-05051 (ACME), ISS042-E-021318 (Destiny).
-          Fire lab backdrops: Apollo 17 Taurus-Littrow panorama (JSC2004E20304), Curiosity Mastcam panorama (PIA25176, NASA/JPL-Caltech/MSSS), ISS Earth limb (ISS040-E-080833), JSC mockup facility (JSC2013E028042). Planet textures: NASA Blue Marble, LRO LROC WAC colour mosaic, Viking MDIM 2.1 (NASA / JPL / USGS). ISS model: NASA 3D Resources.
+          Simulation backdrops: Apollo 17 Taurus-Littrow panorama (JSC2004E20304), Curiosity Mastcam panorama (PIA25176, NASA/JPL-Caltech/MSSS), ISS Earth limb (ISS040-E-080833), JSC mockup facility (JSC2013E028042). Planet textures: NASA Blue Marble, LRO LROC WAC colour mosaic, Viking MDIM 2.1 (NASA / JPL / USGS). ISS model: NASA 3D Resources.
           Full provenance in <code>docs/CREDITS.md</code>.</p>
       </section>
     </>

@@ -1,6 +1,6 @@
 #!/bin/bash
-# FlameAtlas — one-click setup for macOS (double-click in Finder).
-echo "FlameAtlas setup — starting (bash $BASH_VERSION)"
+# Fire Lab — one-click setup for macOS (double-click in Finder).
+echo "Fire Lab setup — starting (bash $BASH_VERSION)"
 trap 'echo; read -r -p "Appuie sur Entrée pour fermer cette fenêtre…" _' EXIT
 HERE="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
 if [ -z "$HERE" ] || ! cd "$HERE"; then
@@ -8,7 +8,7 @@ if [ -z "$HERE" ] || ! cd "$HERE"; then
 fi
 echo "Dossier: $HERE"
 LOG="$HERE/setup.log"
-: > "$LOG" 2>/dev/null || { LOG="$HOME/flameatlas-setup.log"; : > "$LOG"; }
+: > "$LOG" 2>/dev/null || { LOG="$HOME/fire-lab-setup.log"; : > "$LOG"; }
 echo "Journal: $LOG"
 
 step() { printf "\n==> %s\n" "$*" | tee -a "$LOG"; }
@@ -53,7 +53,7 @@ fi
 git add -A
 if ! git diff --cached --quiet; then
   run git commit -q -F - <<'MSG'
-FlameAtlas: evidence engine for spacecraft fire safety (NASA Space Apps 2026)
+Fire Lab: evidence engine for spacecraft fire safety (NASA Space Apps 2026)
 
 - ETL of 26 NASA PSI combustion investigations (2,060 records, 7,688 measurements)
   into SQLite (investigation / test / measurement, FTS5), with quality flags
@@ -76,7 +76,7 @@ if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
     run git push -u origin main
   else
     run gh repo create flameatlas --private --source . --remote origin --push \
-      --description "FlameAtlas — fire-safety evidence from NASA microgravity combustion data (NASA Space Apps 2026)"
+      --description "Fire Lab — fire-safety evidence from NASA microgravity combustion data (NASA Space Apps 2026)"
   fi
 else
   echo "GitHub CLI absent ou non connecté : le repo n'a pas été poussé." | tee -a "$LOG"
@@ -85,4 +85,4 @@ else
   echo "             git remote add origin https://github.com/<toi>/flameatlas.git && git push -u origin main" | tee -a "$LOG"
 fi
 
-printf "\nTERMINÉ. Double-clique start.command pour ouvrir FlameAtlas.\n" | tee -a "$LOG"
+printf "\nTERMINÉ. Double-clique start.command pour ouvrir Fire Lab.\n" | tee -a "$LOG"

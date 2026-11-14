@@ -1,7 +1,7 @@
 /**
  * The four diorama scenes. Each returns a group in tile coordinates (10 × 10 units, ground ≈ y 0), an update()
  * for animation (astronauts, rovers, rocket liftoff, visiting vehicles), the object whose interior is simulated
- * in the fire lab, and suggested lighting / camera. `detail: "low"` gives the miniature version used on the planets.
+ * in the simulation, and suggested lighting / camera. `detail: "low"` gives the miniature version used on the planets.
  */
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -130,7 +130,7 @@ function earth(d: Detail, bare = false): WorldScene {
     steam.setLight(warm, plumeLight.position, 1.6); trail.setLight(warm, plumeLight.position, 1.2);
     const w = g.userData.water as THREE.Texture | undefined; if (w) w.offset.set(t * 0.004, t * 0.003);
   });
-  // the fire lab follows the crew capsule at the top of the stack
+  // the simulation follows the crew capsule at the top of the stack
   const capsule = new THREE.Object3D(); capsule.position.set(0, 2.98, 0); rocket.add(capsule);
 
   return finish("earth", g, capsule, ups, {

@@ -341,7 +341,7 @@ export default function MissionControl() {
               <p className="small faint">{flight.length} combustion investigations flew on or near the ISS. <button className="tlink inline" onClick={() => go("evidence")}>Browse the evidence</button></p>
             )}
             {(info.id === "moon" || info.id === "mars") && (
-              <p className="small faint">No combustion experiment has run at this gravity yet: {info.id === "moon" ? <>only <b>{gap("lunar_base")?.n_inside ?? "…"}</b></> : <><b>{gap("mars_habitat")?.n_inside ?? "…"}</b></>} microgravity tests in PSI fall inside the planned atmosphere. The fire lab shows the physics in between, labelled as a model.</p>
+              <p className="small faint">No combustion experiment has run at this gravity yet: {info.id === "moon" ? <>only <b>{gap("lunar_base")?.n_inside ?? "…"}</b></> : <><b>{gap("mars_habitat")?.n_inside ?? "…"}</b></>} microgravity tests in PSI fall inside the planned atmosphere. The simulation shows the physics in between, labelled as a model.</p>
             )}
             {info.id === "earth" && (
               <p className="small faint">On Earth, buoyancy shapes every fire. The capsule on the pad is where the 1967 Apollo 1 fire happened, in 100 % oxygen.</p>
@@ -358,7 +358,7 @@ export default function MissionControl() {
             <h2>Take away buoyancy and a flame changes shape, colour and speed.</h2>
             <p>On Earth, hot gas rises and pulls fresh air in below: the teardrop. In orbit nothing rises — oxygen only reaches the flame by slow diffusion or by the cabin fans. The flame becomes a dim blue sphere that can starve on its own exhaust.</p>
             <div className="links">
-              <button className="tlink strong" onClick={() => go("firelab")}>See it in the fire lab</button>
+              <button className="tlink strong" onClick={() => go("firelab")}>See it in the simulation</button>
               <button className="tlink" onClick={() => go("evidence")}>Read the evidence</button>
             </div>
           </div>

@@ -22,7 +22,7 @@ from ..services.search import get_index
 from .extract import extract_values, find_terms
 from .store import init
 
-SYSTEM = """You are the research engine of FlameAtlas, a knowledge base built on NASA PSI combustion data and documents the user uploaded.
+SYSTEM = """You are the research engine of Fire Lab, a knowledge base built on NASA PSI combustion data and documents the user uploaded.
 Answer ONLY from the numbered sources. Cite every factual statement with [S#]. Never invent values, units, documents or relationships.
 Quote numbers with their original units exactly as in the sources; if you convert, show the original first.
 If sources disagree, say so and cite both. If they do not answer the question, say plainly that the available documents do not provide a reliable answer.
