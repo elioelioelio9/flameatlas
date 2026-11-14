@@ -31,7 +31,13 @@ export function volumeMaterial(tex: THREE.Data3DTexture, dims: THREE.Vector3): T
           vec2 tv = texture(uVol, p / DIMS).rg; float v = tv.r * step(0.5, tv.g) * uGain;
           if (v < 0.01) continue;
           vec3 c; float alpha;
-          if (uMode == 0) { c = mix(vec3(.62,.62,.6), vec3(.22,.21,.2), clamp(v,0.,1.)); alpha = 1. - exp(-v * 3.2 * dt); }
+          if (uMode == 0) {
+            // smoke: absorbing medium, lit from above (denser smoke above the sample = darker)
+            float up = texture(uVol, (p + vec3(0., .22, 0.)) / DIMS).r;
+            float shade = exp(-up * 2.2);
+            c = mix(vec3(.035,.032,.03), vec3(.36,.35,.33), shade) * (1. - .5 * clamp(v,0.,1.));
+            alpha = 1. - exp(-v * 11. * dt);
+          }
           else if (uMode == 1) { c = inferno(.25 + .75*v) * (1.2 + v); alpha = 1. - exp(-v * 1.6 * dt); }
           else { c = viridis(v); alpha = 1. - exp(-v * 1.4 * dt); }
           col += (1.-a) * alpha * c; a += (1.-a) * alpha;

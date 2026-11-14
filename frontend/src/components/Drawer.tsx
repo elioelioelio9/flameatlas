@@ -5,7 +5,7 @@ import { Doi, ErrorBox, EvidenceBadge, Loading, NEED_LABEL, bytes, fmt, range } 
 import type { Need } from "../types";
 
 export default function Drawer() {
-  const { drawer, openDrawer, toggleCompare, compareIds, setExtractIds, go } = useApp();
+  const { drawer, openDrawer, setExtractIds, go } = useApp();
   const { data, error, loading } = useAsync(() => (drawer ? api.investigation(drawer) : Promise.resolve(null)), [drawer]);
 
   useEffect(() => {
@@ -36,10 +36,7 @@ export default function Drawer() {
             </div>
             <p className="muted">{data.summary}</p>
             <div className="row" style={{ margin: "12px 0" }}>
-              <button className={`btn small ${compareIds.includes(data.accession) ? "on" : ""}`} onClick={() => toggleCompare(data.accession)}>
-                {compareIds.includes(data.accession) ? "In comparison" : "Add to comparison"}
-              </button>
-              <button className="btn small" onClick={() => { setExtractIds([data.accession]); openDrawer(null); go("extract"); }}>
+              <button className="btn small" onClick={() => { setExtractIds([data.accession]); openDrawer(null); go("data"); }}>
                 Extract its data
               </button>
             </div>

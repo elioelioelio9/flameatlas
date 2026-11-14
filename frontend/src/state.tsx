@@ -2,8 +2,10 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { api } from "./api";
 import type { Habitat, Investigation, Meta, Scenario } from "./types";
 
-export type Route = "mission" | "firelab" | "knowledge" | "overview" | "find" | "map" | "compare" | "extract" | "insights" | "earth" | "method";
-export const ROUTES: Route[] = ["mission", "firelab", "knowledge", "overview", "find", "map", "compare", "extract", "insights", "earth", "method"];
+export type Route = "mission" | "firelab" | "evidence" | "data";
+export const ROUTES: Route[] = ["mission", "firelab", "evidence", "data"];
+/** older links keep working */
+const LEGACY: Record<string, Route> = { knowledge: "evidence", find: "evidence", map: "evidence", insights: "evidence", compare: "evidence", overview: "evidence", extract: "data", method: "data", earth: "mission" };
 
 interface AppState {
   route: Route;
@@ -30,8 +32,8 @@ interface AppState {
 const Ctx = createContext<AppState | null>(null);
 
 function readRoute(): Route {
-  const h = window.location.hash.replace(/^#\/?/, "") as Route;
-  return ROUTES.includes(h) ? h : "mission";
+  const h = window.location.hash.replace(/^#\/?/, "");
+  return ROUTES.includes(h as Route) ? (h as Route) : LEGACY[h] ?? "mission";
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {

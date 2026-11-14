@@ -3,9 +3,11 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { api } from "../api";
 import { useApp, useAsync } from "../state";
-import type { CoverageResponse, Investigation } from "../types";
+import { buildWorld, type WorldScene } from "../scenes/worlds";
+import type { CoverageResponse, EarthApp, Investigation } from "../types";
 
 type BodyId = "iss" | "earth" | "moon" | "mars";
 
@@ -14,17 +16,17 @@ const SIM: Record<BodyId, { photo: string; credit: string; habitat: string; scen
   iss: { photo: "/assets/photos/nasa_iss042e021318.jpg", credit: "Destiny at night · NASA ISS042-E-021318", habitat: "Node 1, the US Lab and Node 2: three modules joined by hatches, swept by cabin air.",
     scenarios: [{ id: "iss", label: "Ventilation on", text: "Today's station: the airflow feeds the flame and carries smoke downstream." }, { id: "ventoff", label: "Fans shut down", text: "The standard response: does the flame starve in still air?" }, { id: "explo", label: "34 % O₂ exploration cabin", text: "Oxygen-rich, low-pressure air planned for future vehicles." }] },
   moon: { photo: "/assets/photos/nasa_jsc2004e20304.jpg", credit: "Taurus-Littrow, Apollo 17 · NASA JSC2004E20304", habitat: "A 10 m surface module — laboratory, crew quarters, airlock — at 1/6 g in oxygen-rich air.",
-    scenarios: [{ id: "moon", label: "Fire in the crew quarters", text: "Cotton in a sleep station; does the smoke reach the lab detector in time?" }] },
+    scenarios: [{ id: "moon", label: "Fire in the crew quarters", text: "Cotton in a sleep station; does the smoke reach the lab detector in time?" }, { id: "moon-off", label: "Fans off", text: "Weak buoyancy alone: does the flame survive?" }] },
   mars: { photo: "/assets/photos/nasa_PIA25176.jpg", credit: "Gale crater, Curiosity Mastcam · NASA/JPL-Caltech/MSSS PIA25176", habitat: "A two-deck, 6 m habitat. At 0.38 g, does smoke climb through the deck hatch?",
-    scenarios: [{ id: "mars", label: "Fire on the lab bench", text: "Lower-deck fire, crew sleeping upstairs." }] },
-  earth: { photo: "/assets/photos/nasa_jsc2013e028042.jpg", credit: "Space Vehicle Mockup Facility · NASA JSC2013E028042", habitat: "The same ISS modules on the ground at 1 g: the reference every Earth standard is written for.",
-    scenarios: [{ id: "earth", label: "The same fire at 1 g", text: "Buoyant plume, ceiling detector first." }] },
+    scenarios: [{ id: "mars", label: "Fire on the lab bench", text: "Lower-deck fire, crew sleeping upstairs." }, { id: "mars-off", label: "Fans off", text: "Does smoke still climb through the deck hatch at 0.38 g?" }] },
+  earth: { photo: "/assets/photos/nasa_jsc2013e028042.jpg", credit: "Space Vehicle Mockup Facility · NASA JSC2013E028042", habitat: "A crew capsule on the launch pad, at 1 g: the reference every Earth standard is written for.",
+    scenarios: [{ id: "earth", label: "Fire in the capsule, cabin air", text: "Buoyant plume: the ceiling detector goes first." }, { id: "apollo1", label: "100 % oxygen at 115 kPa", text: "The Apollo 1 atmosphere, on the pad in 1967." }, { id: "liftoff", label: "During liftoff, 3 g", text: "Stronger buoyancy, faster plume." }] },
 };
 const BODIES: BodyInfo[] = [
   { id: "iss", name: "International Space Station", sub: "Low Earth orbit · where NASA's fire experiments flew", gravity: "≈ 0 g", atmosphere: "21 % O₂ · 101 kPa", preset: "iss", presetLabel: "Start a fire on the ISS" },
   { id: "moon", name: "Moon base", sub: "Artemis surface habitat and rovers", gravity: "0.17 g", atmosphere: "≥ 30 % O₂ · ≤ 70 kPa (planned)", preset: "moon", presetLabel: "Start a fire in a Moon base" },
   { id: "mars", name: "Mars habitat", sub: "Long-duration surface outpost", gravity: "0.38 g", atmosphere: "Not yet defined", preset: "mars", presetLabel: "Start a fire in a Mars habitat" },
-  { id: "earth", name: "Earth", sub: "Reference fires, material screening and spin-offs", gravity: "1 g", atmosphere: "21 % O₂ · 101 kPa", preset: "earth", presetLabel: "Start the same fire on Earth" },
+  { id: "earth", name: "Earth launch complex", sub: "Crew vehicle lifting off · reference fires at 1 g", gravity: "1 g (3 g at liftoff)", atmosphere: "21 % O₂ · 101 kPa", preset: "earth", presetLabel: "Start the same fire on Earth" },
 ];
 
 const PHOTOS = {
@@ -60,6 +62,7 @@ function atmosphere(radius: number, color: THREE.ColorRepresentation, power: num
 export default function MissionControl() {
   const { investigations, openDrawer, go, setFirePreset } = useApp();
   const cov = useAsync<CoverageResponse>(() => api.coverage(), []);
+  const earthApps = useAsync<EarthApp[]>(() => api.earth(), []);
   const mountRef = useRef<HTMLDivElement>(null);
   const tagsRef = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<BodyId | null>(null);
@@ -82,12 +85,16 @@ export default function MissionControl() {
     camera.position.copy(HOME);
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.target.copy(HOME_T);
-    controls.enableDamping = true; controls.minDistance = 0.4; controls.maxDistance = 40; controls.enablePan = false;
+    controls.enableDamping = true; controls.minDistance = 0.03; controls.maxDistance = 40; controls.enablePan = false; controls.zoomSpeed = 0.8;
 
     // sunlight from the left, faint fill
     scene.add(new THREE.AmbientLight(0xffffff, 0.035));
     const sun = new THREE.DirectionalLight(0xffffff, 3.0);
     sun.position.set(-12, 3.5, -1.5); scene.add(sun);
+    // the bases are small and often near the terminator: a soft lamp travels with the camera once a world is selected,
+    // and a faint studio environment keeps their metal from going black (planets ignore it)
+    const lamp = new THREE.DirectionalLight(0xfff6ea, 0); lamp.position.set(0.4, 0.6, 1); lamp.target.position.set(0, 0, -1); camera.add(lamp, lamp.target); scene.add(camera);
+    const pm = new THREE.PMREMGenerator(renderer); scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture; scene.environmentIntensity = 0.3;
 
     // stars: faint, white, varied
     const NS = 3000, sp = new Float32Array(NS * 3), sc = new Float32Array(NS * 3);
@@ -101,7 +108,7 @@ export default function MissionControl() {
 
     const loader = new THREE.TextureLoader();
     const tex = (url: string) => { const t = loader.load(url, () => setReady(true)); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; };
-    const planet = (url: string, r: number, rough = 1) => new THREE.Mesh(new THREE.SphereGeometry(r, 128, 64), new THREE.MeshStandardMaterial({ map: tex(url), roughness: rough, metalness: 0 }));
+    const planet = (url: string, r: number, rough = 1) => new THREE.Mesh(new THREE.SphereGeometry(r, 128, 64), new THREE.MeshStandardMaterial({ map: tex(url), roughness: rough, metalness: 0, envMapIntensity: 0 }));
 
     // Earth: NASA Blue Marble; ocean slightly glossy via low roughness is not available per-pixel, keep matte
     const earth = planet("/assets/textures/earth.jpg", 2.2, 0.85);
@@ -111,9 +118,24 @@ export default function MissionControl() {
     scene.add(earthG);
 
     const moon = planet("/assets/textures/moon.jpg", 0.6, 1);
-    moon.position.set(9.5, 0.2, -10); scene.add(moon);
+    const moonG = new THREE.Group(); moonG.position.set(9.5, 0.2, -10); moonG.add(moon); scene.add(moonG);
     const mars = planet("/assets/textures/mars.jpg", 0.95, 1);
-    mars.position.set(-11, 7, -32); mars.add(atmosphere(0.99, 0xd9a07a, 4, 0.5)); scene.add(mars);
+    const marsG = new THREE.Group(); marsG.position.set(-11, 7, -32); marsG.add(mars); marsG.add(atmosphere(0.99, 0xd9a07a, 4, 0.5)); scene.add(marsG);
+
+    // miniature bases sitting on each globe (low detail, animated astronauts / rovers / liftoff)
+    const Y = new THREE.Vector3(0, 1, 0);
+    const minis: { id: BodyId; w: WorldScene; holder: THREE.Group; R: number; normal: THREE.Vector3; scale: number }[] = [];
+    const addMini = (id: "earth" | "moon" | "mars", parent: THREE.Object3D, R: number, dir: [number, number, number], scale: number) => {
+      const w = buildWorld(id, "low", { bare: true });
+      const normal = new THREE.Vector3(...dir).normalize();
+      const holder = new THREE.Group(); holder.quaternion.setFromUnitVectors(Y, normal); holder.position.copy(normal).multiplyScalar(R * 0.997);
+      w.group.scale.setScalar(scale); w.group.position.set(-w.anchor.x * scale, -w.anchor.y * scale, -w.anchor.z * scale); w.setScale(scale);
+      holder.add(w.group); parent.add(holder);
+      minis.push({ id, w, holder, R, normal, scale });
+    };
+    addMini("earth", earthG, 2.2, [-0.3, 0.78, 0.55], 0.16);
+    addMini("moon", moonG, 0.6, [-0.3, 0.8, 0.52], 0.045);
+    addMini("mars", marsG, 0.95, [-0.28, 0.8, 0.53], 0.07);
 
     // ISS: NASA 3-D model, on a low orbit around Earth
     const issPivot = new THREE.Group(); issPivot.position.copy(earthG.position); issPivot.rotation.set(0.35, -0.7, -0.5);
@@ -143,8 +165,8 @@ export default function MissionControl() {
     const orbitLine = new THREE.Mesh(new THREE.TorusGeometry(2.75, 0.0035, 6, 256), new THREE.MeshBasicMaterial({ color: 0xf0f0ed, transparent: true, opacity: 0.18 }));
     issPivot.add(orbitLine);
 
-    const targets: Record<BodyId, THREE.Object3D> = { iss, earth: earthG, moon, mars };
-    const hitList: [THREE.Object3D, BodyId][] = [[issHit, "iss"], [earth, "earth"], [moon, "moon"], [mars, "mars"]];
+    const targets: Record<BodyId, THREE.Object3D> = { iss, earth: earthG, moon: moonG, mars: marsG };
+    const hitList: [THREE.Object3D, BodyId][] = [[issHit, "iss"], [earth, "earth"], [moon, "moon"], [mars, "mars"], ...minis.map((m) => [m.holder, m.id] as [THREE.Object3D, BodyId])];
     const radius: Record<BodyId, number> = { iss: 0.25, earth: 2.2, moon: 0.6, mars: 0.95 };
 
     const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
@@ -155,8 +177,8 @@ export default function MissionControl() {
       const r = renderer.domElement.getBoundingClientRect();
       ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
       ray.setFromCamera(ndc, camera);
-      const hits = ray.intersectObjects(hitList.map((h) => h[0]), false);
-      if (hits.length) { const id = hitList.find((h) => h[0] === hits[0].object)![1]; if (selRef.current === id && performance.now() - lastClick < 450) enterRef.current(id); setSelected(id); lastClick = performance.now(); }
+      const hits = ray.intersectObjects(hitList.map((h) => h[0]), true);
+      if (hits.length) { let o: THREE.Object3D | null = hits[0].object; let hitE = hitList.find((h) => h[0] === o); while (!hitE && o) { o = o.parent; hitE = hitList.find((h) => h[0] === o); } if (!hitE) return; const id = hitE[1]; if (selRef.current === id && performance.now() - lastClick < 450) enterRef.current(id); setSelected(id); lastClick = performance.now(); }
     };
     renderer.domElement.addEventListener("pointerdown", onDown);
     renderer.domElement.addEventListener("pointerup", onUp);
@@ -165,29 +187,54 @@ export default function MissionControl() {
       renderer.setSize(mount.clientWidth, mount.clientHeight, false);
       renderer.domElement.style.width = "100%"; renderer.domElement.style.height = "100%";
       camera.aspect = mount.clientWidth / mount.clientHeight; camera.updateProjectionMatrix();
+      minis.forEach((m) => m.w.setViewportHeight(mount.clientHeight * renderer.getPixelRatio()));
     };
     const ro = new ResizeObserver(resize); ro.observe(mount); resize();
 
-    let raf = 0, lastSel: BodyId | null = null, last = performance.now();
-    const tmp = new THREE.Vector3(), want = new THREE.Vector3(), camWant = new THREE.Vector3();
+    let raf = 0, lastSel: BodyId | null = null, last = performance.now(), t = 0, entering = false;
+    const tmp = new THREE.Vector3(), want = new THREE.Vector3(), camWant = new THREE.Vector3(), nW = new THREE.Vector3();
+    let flying = 0;
+    const siteOf = (id: BodyId, out: THREE.Vector3) => {
+      const m = minis.find((q) => q.id === id);
+      if (!m) { targets[id].getWorldPosition(out); return null; }
+      m.holder.getWorldPosition(out); nW.copy(m.normal).applyQuaternion(m.holder.parent!.getWorldQuaternion(new THREE.Quaternion()));
+      return m;
+    };
     const tick = (now: number) => {
       raf = requestAnimationFrame(tick);
-      const dt = Math.min(0.05, (now - last) / 1000); last = now;
+      const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now; t += dt;
       const k = reduce ? 0.15 : 1;
-      earth.rotation.y += 0.012 * dt * k; moon.rotation.y += 0.006 * dt * k; mars.rotation.y += 0.01 * dt * k;
-      if (!selRef.current) issPivot.rotation.y += 0.02 * dt * k;
       const sel = selRef.current;
+      if (sel !== "earth") earth.rotation.y += 0.012 * dt * k;
+      if (sel !== "moon") moon.rotation.y += 0.006 * dt * k;
+      if (sel !== "mars") mars.rotation.y += 0.01 * dt * k;
+      if (!sel) issPivot.rotation.y += 0.02 * dt * k;
+      issPivot.visible = sel !== "earth";
+      minis.forEach((m) => m.w.update(dt, t));
+      lamp.intensity += ((sel && sel !== "iss" ? 2.2 : 0) - lamp.intensity) * Math.min(1, dt * 2.5);
       if (sel) {
-        targets[sel].getWorldPosition(want);
-        controls.target.lerp(want, 0.08);
-        if (sel !== lastSel || sel === "iss") {
-          const d = sel === "iss" ? 1.1 : radius[sel] * 3.4;
-          const side = sel === "earth" ? new THREE.Vector3(-0.9, 0.35, 1) : sel === "iss" ? new THREE.Vector3(-1, 0.35, 0.45) : new THREE.Vector3(-0.8, 0.3, 1);
-          camWant.copy(want).add(side.normalize().multiplyScalar(d));
+        const m = siteOf(sel, want);
+        controls.target.lerp(want, sel === lastSel ? 0.12 : 0.08);
+        if (sel !== lastSel) {
+          flying = 5;
+          if (m) {
+            // look down on the base from above its horizon, offset towards the camera side
+            const side = camera.position.clone().sub(want); side.addScaledVector(nW, -side.dot(nW)).normalize();
+            const dist = m.scale * (sel === "earth" ? 4 : 5) * 3.2;
+            camWant.copy(want).addScaledVector(nW, dist * 0.5).addScaledVector(side, dist * 0.87);
+          } else camWant.copy(want).add(new THREE.Vector3(-1, 0.35, 0.45).normalize().multiplyScalar(1.1));
         }
-        camera.position.lerp(camWant, sel === "iss" ? 0.08 : 0.05);
-      } else if (lastSel !== null) { camWant.copy(HOME); }
-      if (!sel && lastSel !== null) { controls.target.copy(HOME_T); camera.position.copy(HOME); }
+        if (flying > 0) {
+          camera.position.lerp(camWant, 1 - Math.exp(-3.2 * dt)); flying -= dt;
+          if (camera.position.distanceTo(camWant) < (m ? m.scale : 0.1) * 0.15) flying = 0;
+        }
+        else if (sel === "iss") { camWant.copy(camera.position).sub(controls.target); camera.position.copy(want).add(camWant); }
+        // zooming in on the base takes you inside
+        const R = m ? m.scale * (sel === "earth" ? 4 : 5) * 3.2 * 0.85 : 0.3, d = camera.position.distanceTo(want);
+        if (!entering && flying <= 0 && d < R * 0.32) { entering = true; enterRef.current(sel); }
+        const hintEl = tagsRef.current?.parentElement?.querySelector<HTMLElement>(".mc-enter");
+        if (hintEl) hintEl.textContent = `Scroll in to enter the habitat · ${Math.max(0, Math.round((1 - (d - R * 0.32) / (R * 1.2)) * 100))} %`;
+      } else if (lastSel !== null) { controls.target.copy(HOME_T); camera.position.copy(HOME); }
       lastSel = sel;
       const W = mount.clientWidth, H = mount.clientHeight;
       if (sel && W > 900) camera.setViewOffset(W, H, Math.min(220, W * 0.16), 0, W, H); else camera.clearViewOffset();
@@ -212,7 +259,8 @@ export default function MissionControl() {
     return () => {
       cancelAnimationFrame(raf); ro.disconnect();
       renderer.domElement.removeEventListener("pointerdown", onDown); renderer.domElement.removeEventListener("pointerup", onUp);
-      controls.dispose(); renderer.dispose(); mount.removeChild(renderer.domElement);
+      minis.forEach((m) => m.w.dispose());
+      pm.dispose(); controls.dispose(); renderer.dispose(); mount.removeChild(renderer.domElement);
     };
   }, []);
 
@@ -227,8 +275,9 @@ export default function MissionControl() {
   const gap = (id: string) => cov.data?.gaps.find((g) => g.habitat.id === id);
   const info = BODIES.find((b) => b.id === selected);
   const byAcr = (acr?: string) => investigations.find((i) => (i.acronym ?? "").toUpperCase() === (acr ?? "").toUpperCase());
-  const simulate = (preset: string) => { setFirePreset(preset); go("firelab"); };
-  enterRef.current = (id) => simulate(SIM[id].scenarios[0].id);
+  const [fading, setFading] = useState(false);
+  const simulate = (preset: string, view: "inside" | "base" = "inside") => { setFirePreset(`${preset}:${view}`); go("firelab"); };
+  enterRef.current = (id) => { setFading(true); window.setTimeout(() => simulate(SIM[id].scenarios[0].id), 450); };
 
   const Photo = ({ p, className }: { p: (typeof PHOTOS)[keyof typeof PHOTOS]; className?: string }) => {
     const inv = "acr" in p ? byAcr(p.acr) : undefined;
@@ -251,12 +300,13 @@ export default function MissionControl() {
         <div className="mc-title" style={{ opacity: selected ? 0 : 1 }}>
           <p className="mono meta">NASA Space Apps 2026 · Flame in Freefall</p>
           <h1>Fire behaves differently up there.</h1>
-          <p className="lede">Without gravity, hot gas doesn't rise. Flames turn spherical, starve on their own exhaust, or creep against the cabin airflow. FlameAtlas turns NASA's microgravity combustion data into fire-safety evidence for the station, the Moon and Mars.</p>
+          <p className="lede">Without gravity, hot gas doesn't rise. Pick a world, zoom in on its base and start a fire inside — the physics runs live, and every claim is traced to NASA's microgravity combustion data.</p>
           <div className="links">
             <button className="tlink strong" onClick={() => setSelected("iss")}>Start in the station</button>
+            <button className="tlink" onClick={() => setSelected("earth")}>Launch pad</button>
             <button className="tlink" onClick={() => setSelected("moon")}>Moon base</button>
             <button className="tlink" onClick={() => setSelected("mars")}>Mars habitat</button>
-            <button className="tlink" onClick={() => go("knowledge")}>Knowledge engine</button>
+            <button className="tlink" onClick={() => go("evidence")}>The evidence</button>
           </div>
         </div>
         <div className="mc-labels" ref={tagsRef}>
@@ -266,65 +316,35 @@ export default function MissionControl() {
             </button>
           ))}
         </div>
-        <p className="mc-hint mono">Click a body to choose a fire scenario there · double-click to enter its simulation · drag to orbit · distances not to scale</p>
+        <p className="mc-hint mono">Click a planet to fly to its base · scroll in on the base to enter its fire simulation · drag to orbit</p>
+        {selected && <button className="mc-enter mono" onClick={() => enterRef.current(selected)}>Scroll in to enter the habitat</button>}
+        <div className={`mc-fade ${fading ? "on" : ""}`} aria-hidden="true" />
 
         {info && (
           <aside className="mc-panel" aria-live="polite">
             <button className="tlink close" onClick={() => setSelected(null)}>Back to overview</button>
             <p className="mono meta">{info.sub}</p>
             <h2>{info.name}</h2>
-            <figure className="mc-sim">
-              <img src={SIM[info.id].photo} alt={SIM[info.id].credit} />
-              <figcaption className="mono">{SIM[info.id].credit}</figcaption>
-            </figure>
             <p className="big">{SIM[info.id].habitat}</p>
+            <dl className="facts">
+              <div><dt>Gravity</dt><dd>{info.gravity}</dd></div>
+              <div><dt>Cabin air</dt><dd>{info.atmosphere}</dd></div>
+              <div><dt>NASA fire tests</dt><dd>{info.id === "iss" ? flightTests.toLocaleString() : info.id === "earth" ? `${ground.length} ground studies` : "None yet"}</dd></div>
+            </dl>
             <ul className="mc-scen">
               {SIM[info.id].scenarios.map((sc) => (
                 <li key={sc.id}><button onClick={() => simulate(sc.id)}><span className="t">{sc.label}</span><span className="d">{sc.text}</span></button></li>
               ))}
             </ul>
-            <dl className="facts">
-              <div><dt>Gravity</dt><dd>{info.gravity}</dd></div>
-              <div><dt>Cabin air</dt><dd>{info.atmosphere}</dd></div>
-              <div><dt>NASA fire tests</dt><dd>{info.id === "iss" ? flightTests.toLocaleString() : info.id === "earth" ? `${ground.length} ground studies` : "None"}</dd></div>
-            </dl>
-
+            <button className="tlink" onClick={() => simulate(SIM[info.id].scenarios[0].id, "base")}>See the base in full detail</button>
             {info.id === "iss" && (
-              <>
-                <p>{flight.length} combustion investigations flew on or near the ISS, grouped by the hardware they used.</p>
-                {groups.map(([g, list]) => (
-                  <div key={g} className="grp">
-                    <h3>{g}</h3>
-                    <ul className="inv-list">
-                      {list.map((i) => (
-                        <li key={i.accession}><button onClick={() => openDrawer(i.accession)}><span>{i.acronym ?? i.accession}</span><span className="mono faint">{i.profile.n_records.toLocaleString()} records</span></button></li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </>
+              <p className="small faint">{flight.length} combustion investigations flew on or near the ISS. <button className="tlink inline" onClick={() => go("evidence")}>Browse the evidence</button></p>
             )}
             {(info.id === "moon" || info.id === "mars") && (
-              <>
-                <p className="big">No combustion experiment has run at this gravity yet.</p>
-                <p className="muted">
-                  {info.id === "moon"
-                    ? <>LUCI and FM2 are planned for the lunar surface. Planned cabin air is oxygen-enriched: only <b>{gap("lunar_base")?.n_inside ?? "…"}</b> microgravity tests in PSI fall inside that atmosphere, and {gap("lunar_base")?.by_fuel_phase.solid ? "few" : "none"} of them burn a solid cabin material.</>
-                    : <>The habitat atmosphere is not defined. If it follows the exploration atmospheres, PSI holds <b>{gap("mars_habitat")?.n_inside ?? "…"}</b> microgravity tests there and no solid-fuel test.</>}
-                </p>
-                <p className="small faint">Orbit and Earth results bound what happens here. The fire lab shows the physics in between — clearly labelled as a model.</p>
-              </>
+              <p className="small faint">No combustion experiment has run at this gravity yet: {info.id === "moon" ? <>only <b>{gap("lunar_base")?.n_inside ?? "…"}</b></> : <><b>{gap("mars_habitat")?.n_inside ?? "…"}</b></>} microgravity tests in PSI fall inside the planned atmosphere. The fire lab shows the physics in between, labelled as a model.</p>
             )}
             {info.id === "earth" && (
-              <>
-                <p>On Earth, buoyancy shapes every fire. NASA screens spacecraft materials with 1-g tests (NASA-STD-6001); ground studies re-use flight data to build models.</p>
-                <ul className="inv-list">
-                  {ground.map((i) => (
-                    <li key={i.accession}><button onClick={() => openDrawer(i.accession)}><span>{i.title.length > 58 ? i.title.slice(0, 56) + "…" : i.title}</span><span className="mono faint">{i.accession}</span></button></li>
-                  ))}
-                </ul>
-                <button className="tlink" onClick={() => go("earth")}>Applications on Earth</button>
-              </>
+              <p className="small faint">On Earth, buoyancy shapes every fire. The capsule on the pad is where the 1967 Apollo 1 fire happened, in 100 % oxygen.</p>
             )}
           </aside>
         )}
@@ -336,31 +356,37 @@ export default function MissionControl() {
           <div className="ed-text">
             <p className="mono meta">The physics</p>
             <h2>Take away buoyancy and a flame changes shape, colour and speed.</h2>
-            <p>On Earth, hot combustion gas rises and pulls fresh air in below: the familiar teardrop. In orbit nothing rises. Oxygen only reaches the flame by slow diffusion — or by the station's ventilation. The flame becomes a dim blue sphere, and it can starve on its own exhaust.</p>
-            <p>That changes the fire-safety rules written for Earth: which materials burn, how fast a fire spreads, how quickly a smoke detector sees it, and whether switching off the fans really puts it out.</p>
-            <button className="tlink" onClick={() => go("firelab")}>See it in the fire lab</button>
+            <p>On Earth, hot gas rises and pulls fresh air in below: the teardrop. In orbit nothing rises — oxygen only reaches the flame by slow diffusion or by the cabin fans. The flame becomes a dim blue sphere that can starve on its own exhaust.</p>
+            <div className="links">
+              <button className="tlink strong" onClick={() => go("firelab")}>See it in the fire lab</button>
+              <button className="tlink" onClick={() => go("evidence")}>Read the evidence</button>
+            </div>
           </div>
         </div>
-
-        <div className="ed-head">
-          <p className="mono meta">The evidence</p>
-          <h2>Real flames, burned in orbit and recorded by NASA.</h2>
-        </div>
-        <div className="ed-grid">
-          <Photo p={PHOTOS.bass2} className="wide" />
-          <Photo p={PHOTOS.bass} />
-          <Photo p={PHOTOS.saffire} className="wide" />
-          <Photo p={PHOTOS.acme} />
+        <div className="ed-grid two">
+          <Photo p={PHOTOS.bass2} />
+          <Photo p={PHOTOS.saffire} />
         </div>
       </section>
 
-      <section className="band">
-        <img src={PHOTOS.destiny.src} alt={PHOTOS.destiny.cap} loading="lazy" />
-        <div className="band-text">
-          <p className="mono meta">Destiny · ISS042-E-021318 · NASA</p>
-          <h2>The modules we simulate.</h2>
-          <p>Node 1, the US Lab and Node 2: a 2-metre square aisle lined with racks, joined by hatches, swept by cabin air. Start a fire on any rack and follow the heat, the oxygen and the smoke from module to module.</p>
-          <button className="tlink strong" onClick={() => go("firelab")}>Open the fire lab</button>
+      <section className="onearth">
+        <header>
+          <p className="mono meta">On Earth</p>
+          <h2>What orbit teaches about fires down here.</h2>
+          <p>Microgravity strips buoyancy out of a fire, which makes flames simpler to measure and to model. Each card says what could transfer to confined places on Earth, and what still has to be validated first.</p>
+        </header>
+        <div className="oe-grid">
+          {(earthApps.data ?? []).map((e) => (
+            <article key={e.id}>
+              <span className="mono meta">{e.domain}</span>
+              <h3>{e.title}</h3>
+              <p>{e.contribution}</p>
+              <p className="need"><b>Still to validate.</b> {e.validation_needed}</p>
+              <div className="src">
+                {e.sources.filter((q) => q.accession).map((q, i) => <button key={i} className="tlink inline" onClick={() => openDrawer(q.accession!)}>{investigations.find((v) => v.accession === q.accession)?.acronym ?? q.accession}</button>)}
+              </div>
+            </article>
+          ))}
         </div>
       </section>
     </div>

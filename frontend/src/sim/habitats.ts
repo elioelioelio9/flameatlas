@@ -23,7 +23,7 @@ export interface Habitat {
   doors: Door[];
   vents: Vent[];
   detectors: DetectorDef[];
-  cylinder?: { axis: "y"; cx: number; cz: number; r: number }; // cells outside are solid (round hull)
+  cylinder?: { axis: "y"; cx: number; cz: number; r: number; rTop?: number }; // cells outside are solid (round hull; rTop makes a cone)
   ignition: { i: number; j: number; k: number; n: [number, number, number] };
   walls: "racks" | "panels" | "shell";
   backdrop: "orbit" | "moon" | "mars" | "earth";
@@ -126,11 +126,31 @@ export const HABITATS: Habitat[] = [
     note: "A 6 m diameter, two-deck habitat linked by a floor hatch. At 0.38 g hot smoke climbs to the upper deck.",
   },
   {
-    id: "earth", name: "Earth — ISS mockup at 1 g", short: "Earth", place: "Ground reference",
-    dx: 0.16, nx: ISS_NX, ny: ISS_N, nz: ISS_N, gravity: 9.81,
-    zones: issZones, solids: [b1, b2], doors: [h1, h2], vents: issVents, detectors: issDet(),
-    ignition: { i: 45, j: 1, k: 4, n: [0, 1, 0] }, walls: "racks", backdrop: "earth",
-    note: "The same three modules on the ground, as in NASA's Space Vehicle Mockup Facility: buoyancy at full strength.",
+    id: "earth", name: "Earth — crew capsule on the pad", short: "Earth", place: "Launch pad, 1 g",
+    dx: 0.16, nx: 32, ny: 21, nz: 32, gravity: 9.81,
+    cylinder: { axis: "y", cx: 16.5, cz: 16.5, r: 15.6, rTop: 7.5 },
+    zones: [
+      { id: "lower", name: "Crew deck (couches)", box: [1, 32, 1, 10, 1, 32] },
+      { id: "upper", name: "Upper cabin (stowage, tunnel)", box: [1, 32, 11, 21, 1, 32] },
+    ],
+    solids: [
+      { id: "couches", label: "Crew couches", box: [9, 24, 1, 4, 13, 20], kind: "bench" },
+      { id: "console", label: "Display and control console", box: [10, 23, 5, 12, 27, 28], kind: "rack" },
+      { id: "lockers", label: "Stowage lockers", box: [4, 9, 1, 9, 9, 22], kind: "locker" },
+      { id: "lockers2", label: "Waste and hygiene bay", box: [25, 29, 1, 9, 10, 20], kind: "locker" },
+    ],
+    doors: [],
+    vents: [
+      { id: "supply", label: "Cabin fan outlet (upper cabin)", kind: "supply", face: "y1", a: [14, 19], b: [14, 19] },
+      { id: "return", label: "Return grille (floor)", kind: "return", face: "y0", a: [14, 19], b: [3, 6] },
+    ],
+    detectors: [
+      { id: "upper-c", label: "Cabin ceiling", zone: "upper", i: 16, j: 21, k: 16, kind: "point" },
+      { id: "deck", label: "Crew deck, head height", zone: "lower", i: 16, j: 9, k: 10, kind: "point" },
+      { id: "return", label: "Return duct", zone: "lower", i: 16, j: 1, k: 5, kind: "duct", vent: "return" },
+    ],
+    ignition: { i: 16, j: 9, k: 26, n: [0, 0, -1] }, walls: "shell", backdrop: "earth",
+    note: "A 5 m conical capsule, crew couches below the console. On the pad, 1 g — the setting of the 1967 Apollo 1 fire.",
   },
 ];
 

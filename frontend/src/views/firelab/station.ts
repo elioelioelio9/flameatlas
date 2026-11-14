@@ -7,7 +7,7 @@
  */
 import * as THREE from "three";
 import type { Furniture, Habitat } from "../../sim/habitats";
-import type { StationFire } from "../../sim/fluid3d";
+import type { CabinFire } from "../../sim/firesim";
 
 function canvas(w: number, h: number) {
   const c = document.createElement("canvas"); c.width = w; c.height = h;
@@ -100,7 +100,7 @@ const FURN_COLOUR: Record<Furniture["kind"], number> = {
   rack: 0xb8b4a8, bench: 0xc9c9c4, bunk: 0x7d8790, deck: 0x55585a, partition: 0xc2bfb6, bulkhead: 0xb3afa3, locker: 0xc8c2b2,
 };
 
-export function buildHabitatScene(hab: Habitat, sim: StationFire): HabitatScene {
+export function buildHabitatScene(hab: Habitat, sim: CabinFire): HabitatScene {
   const group = new THREE.Group();
   const surfaces: THREE.Mesh[] = [];
   const { lx, ly, lz, dx } = sim;
@@ -144,15 +144,15 @@ export function buildHabitatScene(hab: Habitat, sim: StationFire): HabitatScene 
     }
   } else {
     // cylindrical shell (Mars): inner surface only, floors and ceiling
-    const cyl = hab.cylinder!; const R = cyl.r * dx, cx = (cyl.cx - 0.5) * dx, cz = (cyl.cz - 0.5) * dx;
+    const cyl = hab.cylinder!; const R = cyl.r * dx, Rt = (cyl.rTop ?? cyl.r) * dx, cx = (cyl.cx - 0.5) * dx, cz = (cyl.cz - 0.5) * dx;
     const [pc, pb] = panelPair("#d9d4c8", 11), [gc, gb] = gratingPair();
     const m = pc.clone(); m.needsUpdate = true; m.repeat.set((2 * Math.PI * R) / 2.4, ly / 2.4);
     const b = pb.clone(); b.needsUpdate = true; b.repeat.copy(m.repeat);
-    const shell = new THREE.Mesh(keep(new THREE.CylinderGeometry(R, R, ly, 72, 1, true)), keep(new THREE.MeshStandardMaterial({ map: m, bumpMap: b, bumpScale: 1.4, roughness: 0.8, side: THREE.BackSide })));
+    const shell = new THREE.Mesh(keep(new THREE.CylinderGeometry(Rt, R, ly, 72, 1, true)), keep(new THREE.MeshStandardMaterial({ map: m, bumpMap: b, bumpScale: 1.4, roughness: 0.8, side: THREE.BackSide })));
     shell.position.set(cx, ly / 2, cz); shell.userData = { surface: "shell" }; group.add(shell); surfaces.push(shell);
     for (const [y, up] of [[0, true], [ly, false]] as const) {
       const fm = (up ? gc : pc).clone(); fm.needsUpdate = true; fm.repeat.set((2 * R) / 1.2, (2 * R) / 1.2);
-      const disk = new THREE.Mesh(keep(new THREE.CircleGeometry(R, 72)), keep(new THREE.MeshStandardMaterial({ map: fm, roughness: 0.85 })));
+      const disk = new THREE.Mesh(keep(new THREE.CircleGeometry(up ? R : Rt, 72)), keep(new THREE.MeshStandardMaterial({ map: fm, roughness: 0.85 })));
       disk.rotation.x = up ? -Math.PI / 2 : Math.PI / 2; disk.position.set(cx, y, cz); disk.userData = { surface: up ? "floor" : "ceiling" };
       group.add(disk); surfaces.push(disk);
     }
@@ -184,12 +184,12 @@ export function buildHabitatScene(hab: Habitat, sim: StationFire): HabitatScene 
     const { nx, ny, nz } = sim;
     const dirs: [number, number, number][] = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
     for (let k = 1; k <= nz; k++) for (let j = 1; j <= ny; j++) for (let i = 1; i <= nx; i++) {
-      if (!sim.solid[sim.IX(i, j, k)]) continue;
+      if (!sim.solid[sim.IX(i - 1, j - 1, k - 1)]) continue;
       const kind = kindOfCell(i, j, k); if (!kind || (kind === "deck" && hab.cylinder)) continue; // smooth shell / deck drawn below
       for (const [ddx, ddy, ddz] of dirs) {
         const ni = i + ddx, nj = j + ddy, nk = k + ddz;
         if (ni < 1 || nj < 1 || nk < 1 || ni > nx || nj > ny || nk > nz) continue;
-        if (sim.solid[sim.IX(ni, nj, nk)]) continue;
+        if (sim.solid[sim.IX(ni - 1, nj - 1, nk - 1)]) continue;
         const e = byKind.get(kind) ?? { pos: [], nor: [], uv: [] }; byKind.set(kind, e);
         const cx = (i - 0.5) * dx, cy = (j - 0.5) * dx, cz = (k - 0.5) * dx, h = dx / 2;
         const c = [cx + ddx * h, cy + ddy * h, cz + ddz * h];
@@ -233,7 +233,7 @@ export function buildHabitatScene(hab: Habitat, sim: StationFire): HabitatScene 
 
   // ------------------------------------------------ decor not resolved by the solver
   const railMat = keep(new THREE.MeshStandardMaterial({ color: 0xb4a77c, roughness: 0.4, metalness: 0.6 }));
-  const lightMat = keep(new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff6e8, emissiveIntensity: 0.75 }));
+  const lightMat = keep(new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff6e8, emissiveIntensity: 0.4 }));
   const cableMat = keep(new THREE.MeshStandardMaterial({ color: 0x2c2e31, roughness: 0.6 }));
   if (hab.walls === "racks") {
     const rails: THREE.Matrix4[] = [];
@@ -266,10 +266,10 @@ export function buildHabitatScene(hab: Habitat, sim: StationFire): HabitatScene 
     // surface habitats: recessed ceiling light panels per zone, handrail along walls
     for (const z of hab.zones) {
       const x0 = (z.box[0] - 1) * dx, x1 = z.box[1] * dx, ytop = z.box[3] * dx;
-      const xs = hab.cylinder ? [(hab.cylinder.cx - 0.5) * dx - 1.2, (hab.cylinder.cx - 0.5) * dx + 1.2] : [x0 + (x1 - x0) * 0.3, x0 + (x1 - x0) * 0.7];
+      const xs = hab.cylinder ? [(hab.cylinder.cx - 0.5) * dx - 0.9, (hab.cylinder.cx - 0.5) * dx + 0.9] : [x0 + (x1 - x0) * 0.3, x0 + (x1 - x0) * 0.7];
       for (const x of xs) {
         const fx = new THREE.Mesh(keep(new THREE.BoxGeometry(0.9, 0.03, 0.5)), lightMat);
-        fx.position.set(x, ytop - 0.02, hab.cylinder ? (hab.cylinder.cz - 0.5) * dx + 1.4 : lz / 2); group.add(fx);
+        fx.position.set(x, ytop - 0.02, hab.cylinder ? (hab.cylinder.cz - 0.5) * dx + 0.6 : lz / 2); group.add(fx);
       }
     }
   }
@@ -293,7 +293,7 @@ export function buildHabitatScene(hab: Habitat, sim: StationFire): HabitatScene 
 }
 
 /** authentic NASA photograph used as the environment around the habitat */
-export function buildBackdrop(hab: Habitat, scene: THREE.Scene, sim: StationFire): () => void {
+export function buildBackdrop(hab: Habitat, scene: THREE.Scene, sim: CabinFire): () => void {
   const loader = new THREE.TextureLoader();
   const objs: THREE.Object3D[] = [];
   const cx = sim.lx / 2, cz = sim.lz / 2;
@@ -310,8 +310,10 @@ export function buildBackdrop(hab: Habitat, scene: THREE.Scene, sim: StationFire
     scene.background = new THREE.Color(isMoon ? 0x000000 : 0xb59a83);
     if (!isMoon) scene.fog = new THREE.Fog(0xb59a83, 30, 120);
     objs.push(pano, ground);
+  } else if (hab.backdrop === "earth") {
+    scene.background = new THREE.Color(0x0e1116);
   } else {
-    const t = loadTex(hab.backdrop === "orbit" ? "/assets/photos/nasa_iss040e080833.jpg" : "/assets/photos/nasa_jsc2013e028042.jpg");
+    const t = loadTex("/assets/photos/nasa_iss040e080833.jpg");
     scene.background = t;
     scene.backgroundIntensity = hab.backdrop === "orbit" ? 0.42 : 0.3;
     scene.backgroundBlurriness = 0;

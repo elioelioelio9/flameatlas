@@ -13,19 +13,20 @@ FlameAtlas turns the combustion investigations of NASA's [Physical Sciences Info
 
 ---
 
-## Three experiences on top of the evidence
+## Four tabs
 
-**Mission.** Earth, the ISS, the Moon and Mars rendered from real NASA data (Blue Marble, LRO LROC, Viking MDIM 2.1, NASA's 3-D ISS model). Click a body: its gravity and cabin air, what NASA's combustion data cover there, real NASA photographs of the place, and the fire scenarios you can simulate there. One click (or a double-click on the body) opens that habitat's simulation.
+**Mission.** Earth, the ISS, the Moon and Mars. Each world carries a miniature base (launch pad with a rocket lifting off, the ISS in orbit, a Moon village, a Mars outpost) with astronauts and rovers moving around it. Click a world to fly to its base, scroll in on the base to enter its fire simulation. Below: the physics in one paragraph, two NASA flight photographs, and the applications on Earth.
 
-**Fire lab.** A 3-D fire simulation inside four habitats, each with its own geometry, decor and backdrop photograph:
-ISS (Node 1 → US Lab → Node 2), a Moon base (lab, crew quarters, airlock), a two-deck Mars habitat, and the ISS mockup at 1 g.
+**Fire lab.** A 3-D fire simulation inside four habitats — ISS (Node 1 → US Lab → Node 2), a Moon base (lab, crew quarters, airlock), a two-deck Mars habitat, a crew capsule on the launch pad — each also shown from outside as a detailed diorama.
 
-- **Physics**: 3-D low-Mach incompressible Navier–Stokes on the habitat grid with immersed solids (bulkheads, partitions, benches, decks), Boussinesq buoyancy, thermal expansion of burnt gas (∇·u = S), vorticity confinement, MacCormack advection of heat and smoke, transport of O₂, CO₂ and smoke; supply vents and open returns; sealed-cabin pressure rise when the fans stop.
-- **Fire**: up to four sources on any surface (click to ignite), material-specific limits, spread (faster downstream and uphill), burnout, radiative-loss extinction; response actions: shut the fans, open/close every hatch and door, discharge a CO₂ extinguisher.
-- **Analysis**: ray-marched smoke / heat / CO₂ volume; movable cut planes (temperature, O₂, CO₂, smoke, speed, vorticity, Péclet, pressure) with iso-lines and auto-range; auto-scaled velocity vectors with a reference arrow; streamlines seeded at vents, fire or the plane; air tracers and Lagrangian smoke parcels; zone table (hottest, lowest O₂, smoke); axial or vertical profiles; probe with velocity vector and time series; per-zone smoke alarms; solver diagnostics (CFL, RMS divergence residual, kinetic energy, cabin pressure rise); CSV and PNG export.
-- **Navigation**: outside cut-away or walk inside (drag + WASD) with collisions against the same solids the flow sees.
+- **Physics**: 3-D low-Mach Navier–Stokes on a staggered (MAC) grid with immersed solids, buoyancy from the full temperature ratio, thermal expansion of the burnt gas (∇·u = S), MIC(0)-preconditioned conjugate-gradient pressure solve to max |∇·u − S| < 5·10⁻⁵ s⁻¹ (the residual is displayed live), clamped MacCormack advection of heat, O₂, CO₂ and smoke. Sealed cabins get a thermodynamic pressure rise; every closed gas region (e.g. behind a shut hatch) is solved with its own compatibility condition.
+- **Fire**: one source — a fuel panel on any surface (click to move it), material-specific oxygen limits, spread (faster downstream and uphill), burnout, starvation.
+- **Settings**: gravity, fan airflow and direction, oxygen, cabin pressure and temperature, burning material, fuel-panel size, igniter power, every hatch and door.
+- **What you see**: ray-marched smoke from the computed smoke field, flame, velocity vectors on a movable plane with a reference scale, streamlines, colour planes (temperature, O₂, smoke, speed, vorticity), smoke-detector alarms, burning-rate history, CSV export.
 
-**Knowledge engine.** An Obsidian-style knowledge graph over the whole base: documents (PSI investigations, 367 publications, your uploads), concepts, entities, data (measured quantities, atmosphere envelopes) and findings, linked by ten typed relationships. Every link carries its basis (metadata, passage, table, computed, curated, inferred, wikilink) and its evidence. Ask a question at the bottom: hybrid retrieval (BM25 + TF-IDF + graph) builds the evidence path in the graph and a cited answer; each research is stored and can be reopened. Upload PDF, DOCX, XLSX, CSV, Markdown, TXT, HTML or JSON; export the graph as an Obsidian vault (or write it into `./vault`) and import your own notes with their wikilinks.
+**Evidence.** One page around an Obsidian-style graph: investigations, conclusions, concepts, places and hardware as beads; drag one and its links follow. One question bar (free text or a scenario) returns the ranked investigations, the quoted sources, and lights the path in the graph. A question about a habitat or about what is missing also shows the coverage map (tests by O₂ and pressure against the planned atmosphere) with the three numbers that matter. The 11 conclusions sit underneath; clicking one lights its sources. You can add your own documents (PDF, text, Markdown, CSV, JSON).
+
+**Data & method.** The export tool (filtered table → ZIP with data dictionary, provenance and limitations) followed by the method, the ranking rules, the limits and the credits. The graph can be downloaded as an Obsidian vault.
 
 The fire model is tuned to reproduce qualitative trends in the PSI data; it is labelled as an educational model, not a validated CFD code. Image and model provenance: [docs/CREDITS.md](docs/CREDITS.md).
 
@@ -39,10 +40,10 @@ The three objectives of the challenge and its Earth add-on each map to a module:
 
 | Challenge objective | FlameAtlas module | What you get |
 |---|---|---|
-| Identify investigations most relevant to habitable crew environments | **Find evidence**, **Conditions map** | Ranking by need (materials, extinction, detection) and scenario (ISS, exploration atmospheres, Moon base, Mars), with three visible scores and a per-condition explanation |
-| Extract data that supports predictive modelling | **Extract data**, **Compare** | A unified table of 2,060 records / 7,688 measurements across 24 investigations, filtered and exported as a ZIP with data dictionary, provenance and limitations |
-| Highlight research that informs next-generation fire-safety controls | **Safety insights & Ask** | Insight cards (observation → design question → limitation → next validation) and a question-answering assistant that cites its sources |
-| Applications on Earth | **On Earth** | Transfers to submarines, aircraft, mines, smoke detection, fire models, engines — each with the validation still required |
+| Identify investigations most relevant to habitable crew environments | **Evidence** (question bar, coverage map) | Ranking with a visible score and reason, plus the tests that fall inside each planned atmosphere |
+| Extract data that supports predictive modelling | **Data & method** | A unified table of 2,060 records / 7,688 measurements across 24 investigations, filtered and exported as a ZIP with data dictionary, provenance and limitations |
+| Highlight research that informs next-generation fire-safety controls | **Evidence** (11 conclusions, sourced answers) | Conclusion cards (observation → design question → limitation → next validation) and answers quoted from their sources |
+| Applications on Earth | **Mission** (On Earth) | Transfers to submarines, aircraft, mines, smoke detection, fire models, engines — each with the validation still required |
 
 ### Findings the data surfaced
 
