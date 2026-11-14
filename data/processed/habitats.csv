@@ -1,0 +1,7 @@
+id,name,o2_pct_min,o2_pct_max,pressure_kpa_min,pressure_kpa_max,gravity,gravity_g,status,source,note
+iss,ISS / Earth-normal cabin,20.5,21.5,97.0,103.0,microgravity,0.0,documented,"PSI-20 objective (14.7 psia, 21 % O2 listed as a NASA-considered atmosphere)",Sea-level-like atmosphere.
+exploration_26,Exploration atmosphere 10.2 psia / 26.5 % O2,26.0,27.0,68.0,72.5,microgravity,0.0,documented,PSI-20 objective: NASA-considered atmosphere for human space missions,Intermediate atmosphere (e.g. vehicles preparing EVAs).
+exploration_34,Exploration atmosphere 8.2 psia / 34 % O2,33.0,35.0,54.0,59.0,microgravity,0.0,documented,PSI-20 objective: NASA-considered atmosphere for human space missions,Reduces EVA pre-breathe time; markedly higher O2 mole fraction than Earth.
+lunar_base,Moon base / pressurized rover,30.0,35.0,54.0,70.3,lunar,0.166,planning_assumption,Challenge statement (https://www.spaceappschallenge.org/2026/challenges/flame-in-freefall/): likely ≥30 % O2 at ≤10.2 psi,"Partial gravity: no PSI combustion data yet (LUCI, FM2 planned). Microgravity and 1-g results bound it."
+mars_habitat,Mars surface habitat,26.0,35.0,54.0,72.5,martian,0.38,hypothetical,Assumption: same candidate exploration atmospheres as above,Atmosphere not fixed; partial gravity (0.38 g) not covered by PSI data.
+eva_suit,Spacesuit (EVA),99.0,100.0,28.0,31.0,microgravity,0.0,documented,Challenge statement (https://www.spaceappschallenge.org/2026/challenges/flame-in-freefall/): 100 % O2 at 4.3 psi,Pure oxygen: far outside every PSI combustion test atmosphere.

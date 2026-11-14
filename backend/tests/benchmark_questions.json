@@ -1,0 +1,10 @@
+[
+  {"question": "Which experiments tell me how a cotton-fiberglass fabric burns in microgravity?", "expect_top3": "PSI-98"},
+  {"question": "How does air flow speed change flame spread over PMMA in space?", "expect_top3": "PSI-25"},
+  {"question": "Which gaseous agent extinguishes droplet flames best, CO2 or helium?", "expect_top3": "PSI-69"},
+  {"question": "Quelles données sur la taille des particules de fumée en microgravité ?", "expect_top3": "PSI-101"},
+  {"question": "Do materials keep burning without ventilation at 34% oxygen?", "expect_top3": "PSI-20"},
+  {"question": "Can a particle counter used for smoke detection work in microgravity?", "expect_top3": "PSI-47"},
+  {"question": "Quelles expériences comparent la combustion en microgravité et sur Terre pour le silicone ?", "expect_top3": "PSI-99"},
+  {"question": "soot and smoke point of jet flames without buoyancy", "expect_top3": "PSI-107"}
+]

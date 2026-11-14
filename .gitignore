@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+
+# Node / build
+frontend/node_modules/
+frontend/dist/
+
+# Local
+.env
+.DS_Store
+*.log
+# The SQLite file is rebuilt from data/raw by `make data` (or automatically at API start-up)
+data/flameatlas.db
+setup.log
+
+vault/
+data/documents/

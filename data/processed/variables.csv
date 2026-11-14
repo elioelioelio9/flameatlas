@@ -1,0 +1,41 @@
+name,label,unit,level,description
+test_id,Test identifier,,test,FlameAtlas id: <PSI accession>:<table>:<row index>
+accession,PSI accession,,test,PSI investigation identifier (cite with its DOI)
+record_type,Record type,,test,test (one run) | session (one day/condition) | test_matrix (planned ranges) | data_reference
+source_file,Source file,,test,PSI experimental-table file the record was parsed from
+source_row,Source row,,test,1-based row number in the source CSV (header = row 1)
+fuel,Fuel / sample,,test,Fuel or sample as written in PSI
+fuel_phase,Fuel phase,,test,solid | liquid | gas | aerosol
+material_class,Material class,,test,"Normalised material family (e.g. PMMA, SIBAL fabric)"
+configuration,Configuration,,test,Sample / burner geometry
+thickness_mm,Thickness,mm,test,"Sample thickness, converted to mm"
+o2_mole_frac,O2 mole fraction,-,test,Initial ambient O2 (oxidizer-stream O2 for inverse flames — see quality flags)
+pressure_kpa,Pressure,kPa,test,"Ambient pressure converted to kPa (from mmHg, atm, bar or psia)"
+flow_cm_s,Flow velocity,cm/s,test,Imposed flow / co-flow velocity (0 = quiescent)
+flow_direction,Flow direction,,test,concurrent | opposed (relative to flame spread)
+diluent,Diluent,,test,"Inert gases present besides N2 (CO2, He)"
+co2_mole_frac,CO2 mole fraction,-,test,Initial ambient CO2 (FLEX suppressant)
+he_mole_frac,He mole fraction,-,test,Initial ambient helium
+gravity,Gravity,,test,microgravity for all PSI flight data
+outcome,Outcome (as reported),,test,End state as written in PSI
+outcome_class,Outcome class,,test,"Normalised end state (extinction, no_ignition, self_extinguished...)"
+quality,Quality flags,,test,"Every interpretation made while parsing (assumed_unit, typo_corrected...)"
+droplet_initial_diameter,Initial droplet diameter,mm,measurement,FLEX
+flame_extinction_diameter,Flame extinction diameter,mm,measurement,FLEX: droplet diameter at visible flame extinction
+burning_rate_constant,Burning-rate constant K,mm²/s,measurement,FLEX: d²-law burning rate (header unit 'mm' in PSI — verify)
+burn_time_s,Burn time,s,measurement,Duration of burning
+ug_burn_length,µg burn length,cm,measurement,SAFFIRE-II: length burned in microgravity
+1g_burn_length,1-g burn length,cm,measurement,SAFFIRE-II: same sample type burned in normal gravity
+ug_spread_rate,µg spread rate,mm/s,measurement,SAFFIRE-II
+1g_spread_rate,1-g spread rate,mm/s,measurement,SAFFIRE-II
+o2_final_pct,Final O2,% vol,measurement,BASS-II chamber O2 after the test
+co2_final_pct,Final CO2,% vol,measurement,BASS-II
+co_final_ppm,Final CO,ppm,measurement,BASS-II
+net_aging_time_s,Net smoke aging time,s,measurement,SAME-R
+heater_resistance_ratio,Heater resistance ratio Rt/R0,-,measurement,SAME-R: proxy for heater temperature
+weight_loss_rate,Weight loss rate,mg/min,measurement,SAME
+adiabatic_flame_temperature,Adiabatic flame temperature,K,measurement,ACME
+stoichiometric_mixture_fraction,Zst,-,measurement,ACME
+fuel_flow_mg_s,Fuel flow,mg/s,measurement,"ACME, SPICE"
+nozzle_diameter,Nozzle diameter,mm,measurement,SPICE
+flames_ignited,Flames ignited,count,measurement,ACME session tables
