@@ -1,0 +1,8 @@
+Voix off — Fire Lab, 30 s (anglais). Début → fin (s) : texte
+
+  0.3 →   4.4  An astronaut lands on Mars. If a fire starts, how will it behave?
+  4.7 →  11.3  Ask Fire Lab. It searches NASA's fire experiments and scores each one out of a hundred, so you only read what matters.
+ 11.5 →  13.9  Then it rebuilds your base in 3-D.
+ 14.1 →  17.7  Add equipment, open the walls, place the vents.
+ 17.9 →  25.7  Ignite. Airflow, smoke and oxygen are computed live at Mars gravity, down to the second the alarm goes off.
+ 26.0 →  29.7  Fire Lab: NASA data, turned into fire safety, on Mars and on Earth.
