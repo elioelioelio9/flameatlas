@@ -19,6 +19,9 @@ export default function FlowBackdrop() {
     let W = 0, H = 0, dpr = 1;
     const resize = () => { dpr = Math.min(2, window.devicePixelRatio); W = cv.width = Math.round(window.innerWidth * dpr); H = cv.height = Math.round(window.innerHeight * dpr); ctx.fillStyle = "#050606"; ctx.fillRect(0, 0, W, H); };
     resize(); window.addEventListener("resize", resize);
+    // a field view of the candle shows the computed flow: the decorative one fades out so the two never mix
+    const dim = (e: Event) => { cv.style.opacity = (e as CustomEvent<boolean>).detail ? "0" : "1"; };
+    window.addEventListener("flow-dim", dim);
     // velocity in units of the screen height per second
     const vel = (x: number, y: number, t: number): [number, number] => {
       let u = U, v = 0;
@@ -57,7 +60,7 @@ export default function FlowBackdrop() {
     };
     if (reduce) for (let q = 0; q < 240; q++) step(0.016);
     else raf = requestAnimationFrame(tick);
-    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", resize); };
+    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", resize); window.removeEventListener("flow-dim", dim); };
   }, []);
   return <canvas ref={ref} className="flow-bg" aria-hidden="true" />;
 }

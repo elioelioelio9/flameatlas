@@ -8,7 +8,7 @@ import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { ALARM, CabinFire, D_REF, MATERIALS, type FlameState, type Params } from "../sim/firesim";
-import { habitatById, roomsOf, type Habitat, type Vent } from "../sim/habitats";
+import { habitatById, roomsOf, type Box, type Furniture, type Habitat, type Vent } from "../sim/habitats";
 import { useApp } from "../state";
 import { buildHabitatScene, buildIgnitionSource } from "./firelab/station";
 import { buildStage } from "./firelab/stage";
@@ -39,7 +39,16 @@ const WORLDS: { id: WorldId; label: string }[] = [{ id: "iss", label: "ISS" }, {
 const G_MARKS = [{ g: 0, label: "0 g" }, { g: 1.62, label: "Moon" }, { g: 3.71, label: "Mars" }, { g: 9.81, label: "Earth" }];
 
 type SliceField = "off" | "temperature" | "o2" | "smoke" | "speed" | "vorticity" | "pressure" | "peclet";
-type Tool = "orbit" | "source" | "supply" | "return" | "probe";
+type Tool = "orbit" | "face" | "source" | "supply" | "return" | "object" | "remove" | "probe";
+type Display = "solid" | "wire" | "xray";
+const LIBRARY: { id: string; label: string; kind: Furniture["kind"]; size: [number, number, number] }[] = [
+  { id: "rack", label: "Equipment rack", kind: "rack", size: [1.05, 2.0, 0.8] },
+  { id: "locker", label: "Stowage locker", kind: "locker", size: [0.6, 1.8, 0.6] },
+  { id: "bench", label: "Work bench", kind: "bench", size: [1.6, 0.9, 0.7] },
+  { id: "bunk", label: "Bunk", kind: "bunk", size: [2.0, 0.5, 0.9] },
+  { id: "cargo", label: "Cargo bags", kind: "locker", size: [1.0, 1.0, 0.8] },
+  { id: "partition", label: "Partition wall", kind: "partition", size: [0.16, 2.0, 1.6] },
+];
 type SecAxis = "off" | "x" | "y" | "z";
 type ViewName = "iso" | "top" | "front" | "side";
 type Axis = "x" | "y" | "z";
@@ -62,7 +71,7 @@ interface Hud {
   div: number; it: number; cfl: number; ms: number; vmax: number; uref: number; range: [number, number] | null; sealed: boolean; rate: number;
 }
 const EMPTY: Hud = { wallMax: 0, wallQ: 0, placed: false, layer: null, smokeVol: 0, headT: 0, headO2: 0.21, headS: 0, far: true, t: 0, state: "idle", hrr: 0, minO2: 0.21, maxT: 0, area: 0, charred: 0, dp: 0, det: [], div: 0, it: 0, cfl: 0, ms: 0, vmax: 0, uref: 0.3, range: null, sealed: true, rate: 0 };
-type Live = { tool: Tool; sec: SecAxis; secPos: number; secFlip: boolean; wallHeat: boolean; vecNorm: boolean; smoke: boolean; flames: boolean; vectors: boolean; density: number; slice: SliceField; axis: Axis; slicePos: number; volume: Volume; stream: boolean; speed: number; paused: boolean; marks: boolean; probe: boolean };
+type Live = { hidden: string[]; display: Display; lib: string; libRot: boolean; tool: Tool; sec: SecAxis; secPos: number; secFlip: boolean; wallHeat: boolean; vecNorm: boolean; smoke: boolean; flames: boolean; vectors: boolean; density: number; slice: SliceField; axis: Axis; slicePos: number; volume: Volume; stream: boolean; speed: number; paused: boolean; marks: boolean; probe: boolean };
 type Api = { ignite: () => void; reset: () => void; door: (id: string, open: boolean) => void; fly: (zone: string | null) => void; view: (v: ViewName) => void };
 
 function download(name: string, text: string) { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type: "text/csv" })); a.download = name; a.click(); }
@@ -79,6 +88,12 @@ export default function FireLab() {
   const [secFlip, setSecFlip] = useState(false);
   const [wallHeat, setWallHeat] = useState(false);
   const [added, setAdded] = useState<Record<string, Vent[]>>({});
+  const [objs, setObjs] = useState<Record<string, { add: Furniture[]; del: string[] }>>({});
+  const [hidden, setHidden] = useState<Record<string, string[]>>({});
+  const [faces, setFaces] = useState<{ id: string; label: string }[]>([]);
+  const [display, setDisplay] = useState<Display>("solid");
+  const [lib, setLib] = useState("rack");
+  const [libRot, setLibRot] = useState(false);
   const [focus, setFocus] = useState<string | null>(null);         // "hab/zone" the camera is in, null = overview of the base
   const pendingFocus = useRef<string | null>(null);
   const [linked, setLinked] = useState<string | null>(null);
@@ -111,7 +126,13 @@ export default function FireLab() {
 
   const habBase = habitatById(habId); const world = habBase.world;
   const extra = useMemo(() => added[habId] ?? [], [added, habId]);
-  const hab = useMemo(() => ({ ...habBase, vents: [...habBase.vents, ...extra] }), [habBase, extra]);
+  const custom = useMemo(() => objs[habId] ?? { add: [], del: [] }, [objs, habId]);
+  const hab = useMemo(() => ({ ...habBase, vents: [...habBase.vents, ...extra], solids: [...habBase.solids.filter((f) => !custom.del.includes(f.id)), ...custom.add] }), [habBase, extra, custom]);
+  const addObject = (f: Furniture) => setObjs((o) => { const c = o[habId] ?? { add: [], del: [] }; return { ...o, [habId]: { ...c, add: [...c.add, f] } }; });
+  const removeObject = (id: string) => setObjs((o) => { const c = o[habId] ?? { add: [], del: [] }; return { ...o, [habId]: c.add.some((f) => f.id === id) ? { ...c, add: c.add.filter((f) => f.id !== id) } : { ...c, del: [...c.del, id] } }; });
+  const hiddenNow = hidden[habId] ?? null;
+  const toggleFace = (id: string) => setHidden((h) => { const cur = h[habId] ?? []; return { ...h, [habId]: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] }; });
+  const onFaces = (f: { id: string; label: string }[], def: string[]) => { setFaces(f); setHidden((h) => (h[habId] ? h : { ...h, [habId]: def })); };
   const addVent = (v: Vent) => setAdded((a) => ({ ...a, [habId]: [...(a[habId] ?? []), v] }));
   const removeVent = (id: string) => setAdded((a) => ({ ...a, [habId]: (a[habId] ?? []).filter((v) => v.id !== id) }));
   const entries = useMemo(() => roomEntries(world), [world]);
@@ -125,9 +146,9 @@ export default function FireLab() {
   const paramsRef = useRef(params); paramsRef.current = params;
   const [marks, setMarks] = useState(false);
   const [probe, setProbe] = useState(false);
-  const live = useRef<Live>({ tool, sec, secPos, secFlip, wallHeat, vecNorm, smoke, flames, vectors, density, slice, axis, slicePos, volume, stream, speed, paused, marks, probe: tool === "probe" });
+  const live = useRef<Live>({ hidden: hiddenNow ?? [], display, lib, libRot, tool, sec, secPos, secFlip, wallHeat, vecNorm, smoke, flames, vectors, density, slice, axis, slicePos, volume, stream, speed, paused, marks, probe: tool === "probe" });
   const volEff: Volume = volume !== "off" ? volume : smoke ? "smoke" : "off";
-  live.current = { tool, sec, secPos, secFlip, wallHeat, vecNorm, smoke, flames, vectors, density, slice, axis, slicePos, volume: volEff, stream, speed, paused, marks, probe };
+  live.current = { hidden: hiddenNow ?? [], display, lib, libRot, tool, sec, secPos, secFlip, wallHeat, vecNorm, smoke, flames, vectors, density, slice, axis, slicePos, volume: volEff, stream, speed, paused, marks, probe: tool === "probe" };
   const api = useRef<Api | null>(null);
 
   useEffect(() => {
@@ -208,17 +229,19 @@ export default function FireLab() {
 
         <div className="lab2-main">
           <section className="lab2-stage">
-            <Interior key={`${hab.id}:${extra.map((v) => v.id).join(",")}`} hab={hab} onAddVent={addVent} entries={entries} pickRef={pickRef} pendingFocus={pendingFocus} paramsRef={paramsRef} live={live} simRef={simRef} api={api} setHud={setHud} setDoors={setDoors} />
+            <Interior key={`${hab.id}:${extra.map((v) => v.id).join(",")}:${custom.add.map((f) => f.id).join(",")}:${custom.del.join(",")}`} hab={hab} onAddVent={addVent} onAddObject={addObject} onRemoveObject={removeObject} onToggleFace={toggleFace} onFaces={onFaces} entries={entries} pickRef={pickRef} pendingFocus={pendingFocus} paramsRef={paramsRef} live={live} simRef={simRef} api={api} setHud={setHud} setDoors={setDoors} />
             <div className="lab-status mono">{status[hud.state]}</div>
             <div className="lab-tools" role="toolbar" aria-label="Tools">
               <span className="k">Tool</span>
-              {([["orbit", "Orbit"], ["source", "Place fire source"], ["supply", "Add supply vent"], ["return", "Add return vent"], ["probe", "Probe velocity"]] as [Tool, string][]).map(([t, l]) => (
+              {([["orbit", "Orbit"], ["face", "Hide / show a face"], ["source", "Place fire source"], ["supply", "Add supply vent"], ["return", "Add return vent"], ["object", "Add object"], ["remove", "Remove object"], ["probe", "Probe velocity"]] as [Tool, string][]).map(([t, l]) => (
                 <button key={t} aria-pressed={tool === t} onClick={() => setTool(t)}>{l}</button>
               ))}
               <span className="k">View</span>
               {([["iso", "3-D"], ["top", "Top (plan)"], ["front", "Front"], ["side", "Side"]] as [ViewName, string][]).map(([v, l]) => (
                 <button key={v} onClick={() => { if (v === "top" && sec === "off") { setSec("y"); setSecPos(0.7); } api.current?.view(v); }}>{l}</button>
               ))}
+              <span className="k">Display</span>
+              <div className="sec disp">{([["solid", "Solid"], ["wire", "Wire"], ["xray", "X-ray"]] as [Display, string][]).map(([d, l]) => <button key={d} aria-pressed={display === d} onClick={() => setDisplay(d)}>{l}</button>)}</div>
               <span className="k">Section</span>
               <div className="sec">{(["off", "x", "y", "z"] as SecAxis[]).map((a) => <button key={a} aria-pressed={sec === a} onClick={() => setSec(a)}>{a === "off" ? "None" : a}</button>)}</div>
               {sec !== "off" && <>
@@ -242,7 +265,7 @@ export default function FireLab() {
               <button className="tlink" onClick={() => api.current?.reset()}>Reset</button>
               <div className="seg" role="group" aria-label="Speed">{[1, 2, 4].map((s) => <button key={s} aria-pressed={speed === s} onClick={() => setSpeed(s)}>{s}×</button>)}</div>
               <span className="grow" />
-              <span className="mono small faint">{tool === "orbit" ? "drag to orbit · right-drag to pan · scroll to zoom · drag the fuel panel to move it" : tool === "source" ? "click a surface to place the fuel panel" : tool === "probe" ? "click in the room to measure the air velocity" : "click a wall, the floor or the ceiling of the room to add the vent (the simulation restarts)"}</span>
+              <span className="mono small faint">{tool === "face" ? "click a wall, the floor or the ceiling to hide it; show it again from the Room list" : tool === "object" ? "click the floor or a deck to place the object (the simulation restarts)" : tool === "remove" ? "click a piece of furniture to remove it (the simulation restarts)" : tool === "orbit" ? "drag to orbit · right-drag to pan · scroll to zoom · drag the fuel panel to move it" : tool === "source" ? "click a surface to place the fuel panel" : tool === "probe" ? "click in the room to measure the air velocity" : "click a wall, the floor or the ceiling of the room to add the vent (the simulation restarts)"}</span>
             </div>
           </section>
 
@@ -252,6 +275,18 @@ export default function FireLab() {
             </div>
 
             <p className="small faint">{hab.note}</p>
+
+            <h2 className="col-h">Room</h2>
+            <div className="checks faces">
+              {faces.map((f) => <label key={f.id} className="check"><input type="checkbox" checked={!(hiddenNow ?? []).includes(f.id)} onChange={() => toggleFace(f.id)} />{f.label}</label>)}
+            </div>
+            {(tool === "object" || custom.add.length > 0 || custom.del.length > 0) && <>
+              <label className="row-select"><span>Object to add</span>
+                <select value={lib} onChange={(e) => { setLib(e.target.value); setTool("object"); }}>{LIBRARY.map((o) => <option key={o.id} value={o.id}>{o.label} ({o.size.map((v) => v.toFixed(1)).join(" × ")} m)</option>)}</select>
+              </label>
+              <label className="check"><input type="checkbox" checked={libRot} onChange={(e) => setLibRot(e.target.checked)} />Rotate 90°</label>
+              {(custom.add.length > 0 || custom.del.length > 0) && <p className="small faint">{custom.add.length} added, {custom.del.length} removed. <button className="tlink small inline" onClick={() => setObjs((o) => ({ ...o, [habId]: { add: [], del: [] } }))}>Restore the original furniture</button></p>}
+            </>}
 
             <h2 className="col-h">Environment</h2>
             <label className="range"><span>Gravity <b className="mono">{gLabel}</b></span><input type="range" min={0} max={30} step={0.01} value={g} onChange={(e) => setG(Number(e.target.value))} /></label>
@@ -331,6 +366,10 @@ export default function FireLab() {
 interface InteriorProps {
   hab: Habitat;
   onAddVent: (v: Vent) => void;
+  onAddObject: (f: Furniture) => void;
+  onRemoveObject: (id: string) => void;
+  onToggleFace: (id: string) => void;
+  onFaces: (f: { id: string; label: string }[], def: string[]) => void;
   entries: RoomEntry[];
   pickRef: React.MutableRefObject<(e: RoomEntry | null) => void>;
   pendingFocus: React.MutableRefObject<string | null>;
@@ -342,7 +381,7 @@ interface InteriorProps {
   setDoors: (d: Record<string, boolean>) => void;
 }
 
-function Interior({ hab, onAddVent, entries, pickRef, pendingFocus, paramsRef, live, simRef, api, setHud, setDoors }: InteriorProps) {
+function Interior({ hab, onAddVent, onAddObject, onRemoveObject, onToggleFace, onFaces, entries, pickRef, pendingFocus, paramsRef, live, simRef, api, setHud, setDoors }: InteriorProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const mount = mountRef.current!;
@@ -363,7 +402,7 @@ function Interior({ hab, onAddVent, entries, pickRef, pendingFocus, paramsRef, l
     // one continuous view: the whole base from outside, and the same camera flown into a room
     type Pose = { pos: THREE.Vector3; target: THREE.Vector3 };
     const poseOf = (zone: string | null): Pose => {
-      if (zone === null) { const L = Math.max(lx, lz); return hab.cylinder ? { pos: new THREE.Vector3(lx / 2 - L * 0.32, ly * 1.3, -L * 0.75), target: new THREE.Vector3(lx / 2, ly * 0.4, lz * 0.55) } : { pos: new THREE.Vector3(lx / 2 - L * 0.1, ly + L * 0.55, lz + L * 0.75), target: new THREE.Vector3(lx / 2 + L * 0.03, ly * 0.25, lz / 2) }; }
+      if (zone === null) { const L = Math.max(lx, lz); return hab.cylinder ? { pos: new THREE.Vector3(lx / 2 - L * 0.25, ly * 0.92, -L * 0.85), target: new THREE.Vector3(lx / 2, ly * 0.38, lz * 0.5) } : { pos: new THREE.Vector3(lx / 2 - L * 0.08, ly * 0.95, lz + L * 0.62), target: new THREE.Vector3(lx / 2, ly * 0.35, lz * 0.45) }; }
       const b = (hab.zones.find((z) => z.id === zone) ?? hab.zones[0]).box;
       const cx = ((b[0] - 1 + b[1]) / 2) * dx, cy = ((b[2] - 1 + b[3]) / 2) * dx, cz = ((b[4] - 1 + b[5]) / 2) * dx, Lz = Math.max(3.5, (b[1] - b[0] + 1) * dx, (b[5] - b[4] + 1) * dx);
       return { pos: new THREE.Vector3(cx - Lz * 0.14, cy + 0.4 + Lz * 0.72, cz + Lz * 0.74), target: new THREE.Vector3(cx, cy - 0.15, cz) };
@@ -387,7 +426,7 @@ function Interior({ hab, onAddVent, entries, pickRef, pendingFocus, paramsRef, l
     for (const z of hab.zones) { const b = z.box; const pl = new THREE.PointLight(0xfff4e6, hab.walls === "racks" ? 1.0 : 1.8, 9, 1.5); pl.position.set(((b[0] + b[1]) / 2 - 0.5) * dx, Math.min(ly - 0.2, (b[3] - 1) * dx - 0.15), lz / 2); scene.add(pl); }
     const flameLight = new THREE.PointLight(0xff9a40, 0, 6, 1.5); scene.add(flameLight);
 
-    const habScene = buildHabitatScene(hab, sim); scene.add(habScene.group); habScene.setCutaway(true);
+    const habScene = buildHabitatScene(hab, sim); scene.add(habScene.group); habScene.setCutaway(false); onFaces(habScene.faces, habScene.defaultHidden);
 
     // fields as 3-D textures (R value, G gas mask)
     const volData = new Uint8Array(sim.n * 2), sliceData = new Uint8Array(sim.n * 2);
@@ -437,7 +476,7 @@ function Interior({ hab, onAddVent, entries, pickRef, pendingFocus, paramsRef, l
     const detMeshes = sim.detectors.map((d) => {
       const m = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.03, 20), new THREE.MeshStandardMaterial({ color: 0x62676a }));
       const c = d.c, i = c % nx, j = Math.floor(c / nx) % ny, k = Math.floor(c / (nx * ny));
-      m.position.set(sim.centre(i), d.kind === "duct" ? sim.centre(j) : (j + 1) * dx - 0.02, sim.centre(k)); scene.add(m); return m;
+      m.position.set(sim.centre(i), d.kind === "duct" ? sim.centre(j) : (j + 1) * dx - 0.02, sim.centre(k)); habScene.group.add(m); habScene.attach(m); return m;
     });
 
     const composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera));
@@ -484,14 +523,28 @@ function Interior({ hab, onAddVent, entries, pickRef, pendingFocus, paramsRef, l
       ghost.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n); ghost.scale.set(w, hgt, 1); ghost.visible = true;
     };
     let dragging = false;
+    // object placement: a box of cells standing on the surface under the cursor, only where every cell is free
+    const boxGhost = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)), new THREE.LineBasicMaterial({ color: 0xf0f0ed, depthTest: false }));
+    boxGhost.renderOrder = 11; boxGhost.visible = false; scene.add(boxGhost);
+    const objectAt = (h: SurfHit): Box | null => {
+      if (h.n[1] !== 1) return null;
+      const it = LIBRARY.find((q) => q.id === live.current.lib)!; const [sx, sy, sz] = live.current.libRot ? [it.size[2], it.size[1], it.size[0]] : it.size;
+      const w = Math.max(1, Math.round(sx / dx)), hh = Math.max(1, Math.round(sy / dx)), d = Math.max(1, Math.round(sz / dx));
+      const [ci, cj, ck] = h.cell; const i0 = Math.max(0, Math.min(nx - w, ci - Math.floor(w / 2))), k0 = Math.max(0, Math.min(nz - d, ck - Math.floor(d / 2))), j0 = cj, j1 = Math.min(ny, j0 + hh);
+      if (j1 <= j0) return null;
+      for (let k = k0; k < k0 + d; k++) for (let j = j0; j < j1; j++) for (let i = i0; i < i0 + w; i++) if (sim.solid[i + nx * (j + ny * k)]) return null;
+      return [i0 + 1, i0 + w, j0 + 1, j1, k0 + 1, k0 + d];
+    };
     const panelSize = () => { const f = paramsRef.current.fuelSize; return [(2 * f + 1) * dx, (2 * Math.max(1, Math.round(f / 2)) + 1) * dx]; };
     const onMove = (e: PointerEvent) => {
       const tool = live.current.tool;
-      if (!dragging && tool !== "source" && tool !== "supply" && tool !== "return") {
+      if (tool !== "object") boxGhost.visible = false;
+      if (!dragging && tool !== "source" && tool !== "supply" && tool !== "return" && tool !== "object") {
         if (tool === "orbit" && !down) { setNdc(e); renderer.domElement.style.cursor = panel.visible && ray.intersectObject(panel)[0] ? "move" : ""; }
         ghost.visible = false; return;
       }
       setNdc(e); const h = surfaceHit();
+      if (tool === "object") { const b = h && objectAt(h); boxGhost.visible = !!b; if (b) { boxGhost.scale.set((b[1] - b[0] + 1) * dx, (b[3] - b[2] + 1) * dx, (b[5] - b[4] + 1) * dx); boxGhost.position.set(((b[0] - 1 + b[1]) / 2) * dx, ((b[2] - 1 + b[3]) / 2) * dx, ((b[4] - 1 + b[5]) / 2) * dx); } ghost.visible = false; return; }
       if (tool === "supply" || tool === "return") showGhost(h && ventAt(h) ? h : null, 4 * dx, 4 * dx);
       else { const [pw, ph] = panelSize(); showGhost(h, pw, ph); }
     };
@@ -509,6 +562,18 @@ function Interior({ hab, onAddVent, entries, pickRef, pendingFocus, paramsRef, l
       if (!d0 || Math.hypot(e.clientX - d0.x, e.clientY - d0.y) > 5) return;
       setNdc(e); const tool = live.current.tool;
       if (tool === "probe") { measureAt(); return; }
+      if (tool === "face") {
+        const hit = ray.intersectObjects(habScene.surfaces, false)[0]; if (!hit) return;
+        let o: THREE.Object3D | null = hit.object; while (o && !o.userData.face) o = o.parent;
+        if (o) onToggleFace(o.userData.face as string); return;
+      }
+      if (tool === "object") { const h = surfaceHit(); const b = h && objectAt(h); if (!b) return; const it = LIBRARY.find((q) => q.id === live.current.lib)!; onAddObject({ id: `obj-${Date.now() % 1000000}`, label: it.label, kind: it.kind, box: b }); return; }
+      if (tool === "remove") {
+        const h = surfaceHit(); if (!h) return;
+        const p = h.point.clone().addScaledVector(new THREE.Vector3(...h.n), -dx * 0.5); const [i, j, k] = sim.cellOf(p.x, p.y, p.z);
+        const f = hab.solids.find((q) => q.kind !== "deck" && q.kind !== "bulkhead" && i + 1 >= q.box[0] && i + 1 <= q.box[1] && j + 1 >= q.box[2] && j + 1 <= q.box[3] && k + 1 >= q.box[4] && k + 1 <= q.box[5]);
+        if (f) onRemoveObject(f.id); return;
+      }
       if (tool === "source") { const h = surfaceHit(); if (h) placeFire(h, false); return; }
       if (tool === "supply" || tool === "return") {
         const h = surfaceHit(); const v = h && ventAt(h); if (!v) return;
@@ -706,9 +771,10 @@ function Interior({ hab, onAddVent, entries, pickRef, pendingFocus, paramsRef, l
     const probePos = new THREE.Vector3(); let probeOn = false;
     const measureAt = () => {
       // first a solid surface or the colour plane, else the point on the ray nearest the cabin centre
-      const hits = ray.intersectObjects([...habScene.surfaces, slicePlane].filter((o) => o.visible), false);
-      if (hits[0]) probePos.copy(hits[0].point).addScaledVector(ray.ray.direction, hits[0].object === slicePlane ? 0 : -dx * 0.6);
-      else ray.ray.closestPointToPoint(new THREE.Vector3(lx / 2, ly / 2, lz / 2), probePos);
+      // in the colour plane when it is shown, otherwise on a horizontal plane at 1.2 m (or mid-height in a low room)
+      const onSlice = slicePlane.visible ? ray.intersectObject(slicePlane, false)[0] : undefined;
+      if (onSlice) probePos.copy(onSlice.point);
+      else if (!ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -Math.min(1.2, ly / 2)), probePos)) return;
       probePos.set(Math.min(lx - 1e-3, Math.max(1e-3, probePos.x)), Math.min(ly - 1e-3, Math.max(1e-3, probePos.y)), Math.min(lz - 1e-3, Math.max(1e-3, probePos.z)));
       probeOn = true; updateProbe();
     };
@@ -747,6 +813,7 @@ function Interior({ hab, onAddVent, entries, pickRef, pendingFocus, paramsRef, l
     };
 
     // ---------------- loop
+    let hiddenKey = "", dispKey: Display = "solid", dispT = 0;
     let raf = 0, last = performance.now(), hudT = 0, simClock = 0, wallClock = 0, envT = 0, wallPaint = 0, prevNow = performance.now();
     const DT = 0.06;
     const vfield = (x: number, y: number, z: number): [number, number, number] | null => sim.velocity(x, y, z);
@@ -816,7 +883,9 @@ function Interior({ hab, onAddVent, entries, pickRef, pendingFocus, paramsRef, l
       }
       sim.detectors.forEach((d, q) => { const m = detMeshes[q].material as THREE.MeshStandardMaterial; m.emissive.set(d.alarmAt !== null ? (Math.floor(now / 400) % 2 ? 0xff3322 : 0x330000) : 0x000000); });
 
-      envT += dtw; applySection(); const flightLast = prevNow; prevNow = now;
+      envT += dtw; applySection();
+      const hk = live.current.hidden.join(","); if (hk !== hiddenKey) { hiddenKey = hk; habScene.setHidden(live.current.hidden); }
+      if (live.current.display !== dispKey || (dispKey !== "solid" && now - dispT > 600)) { dispKey = live.current.display; dispT = now; habScene.setDisplay(dispKey); } const flightLast = prevNow; prevNow = now;
       stepWalls(simDt); wallMesh.visible = Lv.wallHeat; if (Lv.wallHeat && now - wallPaint > 200) { wallPaint = now; paintWalls(); }
       if (flight) {
         flight.t = Math.min(1, flight.t + Math.min(0.3, (now - flightLast) / 1000) / 1.2); const e = flight.t < 0.5 ? 4 * flight.t ** 3 : 1 - (-2 * flight.t + 2) ** 3 / 2;

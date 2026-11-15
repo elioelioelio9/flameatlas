@@ -93,6 +93,13 @@ export interface HabitatScene {
   surfaces: THREE.Mesh[];               // ignitable / probe-able
   rebuildSolids: () => void;            // call after a door changes
   setCutaway: (on: boolean) => void;    // translucent intermediate decks when seen from outside
+  /** the room's faces (walls, floor, ceiling, hull quarters) that the user can hide */
+  faces: { id: string; label: string }[];
+  defaultHidden: string[];
+  setHidden: (ids: string[]) => void;
+  /** register an object that sits on a face (detector, light): it hides with that face */
+  attach: (o: THREE.Object3D) => void;
+  setDisplay: (mode: "solid" | "wire" | "xray") => void;
   dispose: () => void;
 }
 
@@ -107,55 +114,96 @@ export function buildHabitatScene(hab: Habitat, sim: CabinFire): HabitatScene {
   const disposables: { dispose: () => void }[] = [];
   const keep = <T extends { dispose: () => void }>(x: T) => { disposables.push(x); return x; };
 
-  // ------------------------------------------------ domain walls
+  // ------------------------------------------------ domain faces
+  // Every face is a solid slab (6 cm, outside the solver grid) with its inner surface textured, so it reads the
+  // same from inside and outside. Faces are hidden by the user, never automatically: nothing is left floating.
+  const T = 0.06;
+  const tagged: [THREE.Object3D, string][] = [];
+  const faces: { id: string; label: string }[] = [];
+  const shellMat = keep(new THREE.MeshStandardMaterial({ color: 0xbdbbb4, roughness: 0.9 }));
+  const addFace = (id: string, o: THREE.Object3D, isSurface = true) => {
+    group.add(o); tagged.push([o, id]);
+    o.traverse((c) => { const m = c as THREE.Mesh; if (m.isMesh && isSurface) { m.userData.surface = m.userData.surface ?? id; m.userData.face = id; surfaces.push(m); } });
+  };
+  const slab = (sx: number, sy: number, sz: number, x: number, y: number, z: number) => { const m = new THREE.Mesh(keep(new THREE.BoxGeometry(sx, sy, sz)), shellMat); m.position.set(x, y, z); return m; };
   if (hab.walls === "racks" || hab.walls === "panels") {
-    const isLabUnused = false; void isLabUnused;
     const [pc, pb] = panelPair("#d5d3cc", 3), [gc, gb] = gratingPair();
+    void pb;
+    faces.push({ id: "floor", label: "Floor" }, { id: "ceiling", label: "Ceiling" }, { id: "z0", label: "Wall z = 0" }, { id: "z1", label: `Wall z = ${lz.toFixed(1)} m` }, { id: "x0", label: "End wall x = 0" }, { id: "x1", label: `End wall x = ${lx.toFixed(1)} m` });
     for (const z of hab.zones) {
       const x0 = (z.box[0] - 1) * dx, x1 = z.box[1] * dx, len = x1 - x0;
-      const sides: [string, THREE.Euler, THREE.Vector3, number][] = [
-        ["floor", new THREE.Euler(-Math.PI / 2, 0, 0), new THREE.Vector3(x0 + len / 2, 0, lz / 2), lz],
-        ["ceiling", new THREE.Euler(Math.PI / 2, 0, 0), new THREE.Vector3(x0 + len / 2, ly, lz / 2), lz],
-        ["port", new THREE.Euler(0, 0, 0), new THREE.Vector3(x0 + len / 2, ly / 2, 0), ly],
-        ["starboard", new THREE.Euler(0, Math.PI, 0), new THREE.Vector3(x0 + len / 2, ly / 2, lz), ly],
+      const sides: [string, THREE.Euler, THREE.Vector3, number, THREE.Mesh][] = [
+        ["floor", new THREE.Euler(-Math.PI / 2, 0, 0), new THREE.Vector3(x0 + len / 2, 0, lz / 2), lz, slab(len, T, lz + 2 * T, x0 + len / 2, -T / 2, lz / 2)],
+        ["ceiling", new THREE.Euler(Math.PI / 2, 0, 0), new THREE.Vector3(x0 + len / 2, ly, lz / 2), lz, slab(len, T, lz + 2 * T, x0 + len / 2, ly + T / 2, lz / 2)],
+        ["z0", new THREE.Euler(0, 0, 0), new THREE.Vector3(x0 + len / 2, ly / 2, 0), ly, slab(len, ly, T, x0 + len / 2, ly / 2, -T / 2)],
+        ["z1", new THREE.Euler(0, Math.PI, 0), new THREE.Vector3(x0 + len / 2, ly / 2, lz), ly, slab(len, ly, T, x0 + len / 2, ly / 2, lz + T / 2)],
       ];
-      for (const [name, rot, pos, w] of sides) {
-        let map: THREE.Texture, bump: THREE.Texture, repU = 1, repV = 1;
-        if (name === "floor") { [map, bump] = [gc, gb]; repU = len / 1.2; repV = w / 1.2; }
-        else { [map, bump] = [pc, pb]; repU = len / 2.4; repV = w / 2.4; }
-        const m = map.clone(); m.needsUpdate = true; m.repeat.set(repU, repV);
-        const b = bump.clone(); b.needsUpdate = true; b.repeat.set(repU, repV);
-        const mat = keep(name === "floor" ? new THREE.MeshStandardMaterial({ map: m, bumpMap: b, bumpScale: 1.6, roughness: 0.78, metalness: 0.05 }) : new THREE.MeshStandardMaterial({ color: name === "ceiling" ? 0xe6e4de : 0xd3d1ca, roughness: 0.9 }));
-        const mesh = new THREE.Mesh(keep(new THREE.PlaneGeometry(len, w)), mat);
-        mesh.rotation.copy(rot); mesh.position.copy(pos);
-        if (name === "starboard") { const uv = mesh.geometry.attributes.uv as THREE.BufferAttribute; for (let q = 0; q < uv.count; q++) uv.setX(q, 1 - uv.getX(q)); }
-        mesh.userData = { surface: name, zone: z.id };
-        group.add(mesh); surfaces.push(mesh);
+      for (const [name, rot, pos, w, outer] of sides) {
+        let mat: THREE.Material;
+        if (name === "floor") { const m = gc.clone(); m.needsUpdate = true; m.repeat.set(len / 1.2, w / 1.2); const b = gb.clone(); b.needsUpdate = true; b.repeat.copy(m.repeat); mat = keep(new THREE.MeshStandardMaterial({ color: 0x8e8c86, roughness: 0.85 })); void m; void b; }
+        else mat = keep(new THREE.MeshStandardMaterial({ color: name === "ceiling" ? 0xe6e4de : 0xd3d1ca, roughness: 0.9 }));
+        const inner = new THREE.Mesh(keep(new THREE.PlaneGeometry(len, w)), mat); inner.rotation.copy(rot); inner.position.copy(pos);
+        inner.userData = { surface: name === "z0" ? "port" : name === "z1" ? "starboard" : name, zone: z.id };
+        const fg = new THREE.Group(); fg.add(inner, outer); addFace(name, fg);
       }
     }
-    // end walls (grilles where vents are; plain panels otherwise)
-    const gt = grilleTexture();
-    for (const [x, rotY] of [[0, Math.PI / 2], [lx, -Math.PI / 2]] as const) {
-      const mesh = new THREE.Mesh(keep(new THREE.PlaneGeometry(lz, ly)), keep(new THREE.MeshStandardMaterial({ map: hab.walls === "racks" ? gt : pc, roughness: 0.8 })));
-      mesh.rotation.y = rotY; mesh.position.set(x, ly / 2, lz / 2); mesh.userData = { surface: x === 0 ? "fwd" : "aft" }; (mesh.material as THREE.MeshStandardMaterial).map = null; (mesh.material as THREE.MeshStandardMaterial).color.set(0xcfcdc6);
-      group.add(mesh); surfaces.push(mesh);
+    void pc;
+    for (const [x, id] of [[0, "x0"], [lx, "x1"]] as const) {
+      const inner = new THREE.Mesh(keep(new THREE.PlaneGeometry(lz, ly)), keep(new THREE.MeshStandardMaterial({ color: 0xcfcdc6, roughness: 0.85 })));
+      inner.rotation.y = x === 0 ? Math.PI / 2 : -Math.PI / 2; inner.position.set(x, ly / 2, lz / 2); inner.userData = { surface: x === 0 ? "fwd" : "aft" };
+      const fg = new THREE.Group(); fg.add(inner, slab(T, ly + 2 * T, lz + 2 * T, x === 0 ? -T / 2 : lx + T / 2, ly / 2, lz / 2)); addFace(id, fg);
     }
   } else {
-    // cylindrical shell (Mars): inner surface only, floors and ceiling
+    // round hull (cylinder, cone or dome) in four quarters, each one a face the user can hide
     const cyl = hab.cylinder!; const R = cyl.r * dx, Rt = (cyl.rTop ?? cyl.r) * dx, cx = (cyl.cx - 0.5) * dx, cz = (cyl.cz - 0.5) * dx;
-    const [pc, pb] = panelPair("#d9d4c8", 11), [gc, gb] = gratingPair();
-    const m = pc.clone(); m.needsUpdate = true; m.repeat.set((2 * Math.PI * R) / 2.4, ly / 2.4);
-    const b = pb.clone(); b.needsUpdate = true; b.repeat.copy(m.repeat);
-    const shellGeo = cyl.dome ? new THREE.SphereGeometry(R, 72, 24, 0, Math.PI * 2, Math.acos(Math.min(1, ly / R)), Math.PI / 2 - Math.acos(Math.min(1, ly / R))).translate(0, -ly / 2, 0) : new THREE.CylinderGeometry(Rt, R, ly, 72, 1, true);
-    const shell = new THREE.Mesh(keep(shellGeo), keep(new THREE.MeshStandardMaterial({ color: 0xd6d4cd, roughness: 0.9, side: THREE.BackSide })));
-    shell.position.set(cx, ly / 2, cz); shell.userData = { surface: "shell" }; group.add(shell); surfaces.push(shell);
-    for (const [y, up] of [[0, true], [ly, false]] as const) {
-      const fm = (up ? gc : pc).clone(); fm.needsUpdate = true; fm.repeat.set((2 * R) / 1.2, (2 * R) / 1.2);
-      const disk = new THREE.Mesh(keep(new THREE.CircleGeometry(up ? R : cyl.dome ? Math.sqrt(Math.max(0, R * R - ly * ly)) : Rt, 72)), keep(up ? new THREE.MeshStandardMaterial({ map: fm, roughness: 0.85 }) : new THREE.MeshStandardMaterial({ color: 0xe6e4de, roughness: 0.9 })));
-      disk.rotation.x = up ? -Math.PI / 2 : Math.PI / 2; disk.position.set(cx, y, cz); disk.userData = { surface: up ? "floor" : "ceiling" };
-      group.add(disk); surfaces.push(disk);
+    const [gc, gb] = gratingPair();
+    const inMat = keep(new THREE.MeshStandardMaterial({ color: 0xd6d4cd, roughness: 0.9, side: THREE.BackSide }));
+    const quarters: [string, string, number][] = [["hull+z", "Hull, +z quarter", 0], ["hull+x", "Hull, +x quarter", Math.PI / 2], ["hull-z", "Hull, −z quarter", Math.PI], ["hull-x", "Hull, −x quarter", (3 * Math.PI) / 2]];
+    faces.push({ id: "floor", label: "Floor" }, { id: "ceiling", label: cyl.dome ? "Dome top" : "Ceiling" }, ...quarters.map(([id, label]) => ({ id, label })));
+    const topR = cyl.dome ? Math.sqrt(Math.max(0, R * R - ly * ly)) : Rt;
+    for (const [id, , mid] of quarters) {
+      const fg = new THREE.Group(); fg.position.set(cx, 0, cz);
+      if (cyl.dome) {
+        // three.js sphere: phi = 0 points to −x, phi = π/2 to +z; our quarter centred on angle `mid` from +z towards +x
+        const th0 = Math.acos(Math.min(1, ly / R)), phiMid = Math.PI / 2 - mid;
+        const g = (r: number) => new THREE.SphereGeometry(r, 36, 18, phiMid - Math.PI / 4, Math.PI / 2, th0, Math.PI / 2 - th0);
+        fg.add(new THREE.Mesh(keep(g(R)), inMat).translateY(-0)); fg.add(new THREE.Mesh(keep(g(R + T)), shellMat));
+        fg.children.forEach((c) => (c.position.y = -0)); fg.position.y = 0;
+        fg.children.forEach((c) => { (c as THREE.Mesh).geometry.translate(0, 0, 0); });
+        // sphere centred on the floor
+      } else {
+        const g = (r0: number, r1: number) => new THREE.CylinderGeometry(r0, r1, ly, 36, 1, true, mid - Math.PI / 4, Math.PI / 2).translate(0, ly / 2, 0);
+        fg.add(new THREE.Mesh(keep(g(Rt, R)), inMat)); fg.add(new THREE.Mesh(keep(g(Rt + T, R + T)), shellMat));
+      }
+      (fg.children[0] as THREE.Mesh).userData.surface = "shell";
+      addFace(id, fg);
+    }
+    // floor and ceiling as slabs with the textured inner face
+    const fm = gc.clone(); fm.needsUpdate = true; fm.repeat.set((2 * R) / 1.2, (2 * R) / 1.2); const fb = gb.clone(); fb.needsUpdate = true; fb.repeat.copy(fm.repeat);
+    const fl = new THREE.Group(); fl.position.set(cx, 0, cz);
+    const disk = new THREE.Mesh(keep(new THREE.CircleGeometry(R, 72)), keep(new THREE.MeshStandardMaterial({ color: 0x8e8c86, roughness: 0.85 }))); disk.rotation.x = -Math.PI / 2; disk.userData.surface = "floor";
+    const fs = new THREE.Mesh(keep(new THREE.CylinderGeometry(R + T, R + T, T, 72)), shellMat); fs.position.y = -T / 2;
+    fl.add(disk, fs); addFace("floor", fl);
+    if (topR > 0.05) {
+      const cl = new THREE.Group(); cl.position.set(cx, ly, cz);
+      const cd = new THREE.Mesh(keep(new THREE.CircleGeometry(topR, 72)), keep(new THREE.MeshStandardMaterial({ color: 0xe6e4de, roughness: 0.9 }))); cd.rotation.x = Math.PI / 2; cd.userData.surface = "ceiling";
+      const cs = new THREE.Mesh(keep(new THREE.CylinderGeometry(topR + T, topR + T, T, 72)), shellMat); cs.position.y = T / 2;
+      cl.add(cd, cs); addFace("ceiling", cl);
     }
   }
+  /** which face an object sits on (within 30 cm), or null for objects in the middle of the room */
+  const faceAt = (p: THREE.Vector3): string | null => {
+    if (p.y > ly - 0.3) return "ceiling";
+    if (p.y < 0.05) return "floor";
+    if (hab.cylinder) {
+      const c = hab.cylinder, R = c.r * dx, x = p.x - (c.cx - 0.5) * dx, z = p.z - (c.cz - 0.5) * dx;
+      if (Math.hypot(x, z) < R - 0.3) return null;
+      const a = Math.atan2(x, z); const q = Math.round(((a + 2 * Math.PI) % (2 * Math.PI)) / (Math.PI / 2)) % 4;
+      return ["hull+z", "hull+x", "hull-z", "hull-x"][q];
+    }
+    const d: [number, string][] = [[p.z, "z0"], [lz - p.z, "z1"], [p.x, "x0"], [lx - p.x, "x1"]];
+    d.sort((a, b) => a[0] - b[0]); return d[0][0] < 0.3 ? d[0][1] : null;
+  };
 
   // ------------------------------------------------ solids (voxel surface), rebuilt when doors change
   const solidGroup = new THREE.Group(); group.add(solidGroup);
@@ -164,7 +212,7 @@ export function buildHabitatScene(hab: Habitat, sim: CabinFire): HabitatScene {
   const matFor = (kind: Furniture["kind"]) => {
     if (!furnMats.has(kind)) {
       const opts: THREE.MeshStandardMaterialParameters = { color: FURN_COLOUR[kind], roughness: kind === "bench" ? 0.45 : 0.75, metalness: kind === "bulkhead" ? 0.25 : 0.06, side: THREE.DoubleSide };
-      if (kind === "deck") { const t = dc.clone(); t.needsUpdate = true; t.repeat.set(1 / 1.2, 1 / 1.2); opts.map = t; opts.color = 0xffffff; }
+      if (kind === "deck") opts.color = 0x9a9892;
       if (false as boolean) { const t = rc2.clone(); t.needsUpdate = true; t.repeat.set(1 / 4.2, 1 / 2.1); opts.map = t; opts.color = 0xffffff; const bb = rb2.clone(); bb.needsUpdate = true; bb.repeat.copy(t.repeat); opts.bumpMap = bb; opts.bumpScale = 1.2; }
       furnMats.set(kind, keep(new THREE.MeshStandardMaterial(opts)));
     }
@@ -227,7 +275,7 @@ export function buildHabitatScene(hab: Habitat, sim: CabinFire): HabitatScene {
     }
   };
   const deckTex = gratingPair()[0]; deckTex.repeat.set(1 / 1.2, 1 / 1.2);
-  const deckMat = keep(new THREE.MeshStandardMaterial({ map: deckTex, roughness: 0.8, metalness: 0.2, transparent: true, opacity: 1, side: THREE.DoubleSide }));
+  const deckMat = keep(new THREE.MeshStandardMaterial({ color: 0x9a9892, roughness: 0.85, transparent: true, opacity: 1, side: THREE.DoubleSide })); void deckTex;
   rebuildSolids();
 
   // ------------------------------------------------ decor not resolved by the solver
@@ -243,7 +291,7 @@ export function buildHabitatScene(hab: Habitat, sim: CabinFire): HabitatScene {
         for (const y of [0.05, ly - 0.05]) rails.push(new THREE.Matrix4().makeTranslation(x + 0.6, y, 0.45));
       }
       for (let x = x0 + 0.9; x < x1 - 0.6; x += 2.1) for (const zz of [0.08, lz - 0.08]) {
-        const fx = new THREE.Mesh(keep(new THREE.BoxGeometry(0.9, 0.05, 0.12)), lightMat); fx.position.set(x, ly - 0.06, zz); group.add(fx);
+        const fx = new THREE.Mesh(keep(new THREE.BoxGeometry(0.9, 0.05, 0.12)), lightMat); fx.position.set(x, ly - 0.06, zz); group.add(fx); tagged.push([fx, faceAt(fx.position) ?? ""]);
       }
     }
     void rails; void railMat;
@@ -267,7 +315,7 @@ export function buildHabitatScene(hab: Habitat, sim: CabinFire): HabitatScene {
       const xs = hab.cylinder ? [(hab.cylinder.cx - 0.5) * dx - 0.9, (hab.cylinder.cx - 0.5) * dx + 0.9] : [x0 + (x1 - x0) * 0.3, x0 + (x1 - x0) * 0.7];
       for (const x of xs) {
         const fx = new THREE.Mesh(keep(new THREE.BoxGeometry(0.9, 0.03, 0.5)), lightMat);
-        fx.position.set(x, ytop - 0.02, hab.cylinder ? (hab.cylinder.cz - 0.5) * dx + 0.6 : lz / 2); group.add(fx);
+        fx.position.set(x, ytop - 0.02, hab.cylinder ? (hab.cylinder.cz - 0.5) * dx + 0.6 : lz / 2); group.add(fx); tagged.push([fx, faceAt(fx.position) ?? ""]);
       }
     }
   }
@@ -283,11 +331,38 @@ export function buildHabitatScene(hab: Habitat, sim: CabinFire): HabitatScene {
     else if (v.face === "y0" || v.face === "y1") { m.rotation.x = v.face === "y0" ? -Math.PI / 2 : Math.PI / 2; m.position.set((a0 + a1) / 2, v.face === "y0" ? e : ly - e, (b0 + b1) / 2); }
     else { m.rotation.y = v.face === "z0" ? 0 : Math.PI; m.position.set((a0 + a1) / 2, (b0 + b1) / 2, v.face === "z0" ? e : lz - e); }
     m.userData = { vent: v.id };
-    group.add(m);
+    group.add(m); tagged.push([m, v.face === "y0" ? "floor" : v.face === "y1" ? "ceiling" : hab.cylinder ? faceAt(m.position) ?? "" : v.face]);
   }
 
   const setCutaway = (on: boolean) => { deckMat.opacity = on ? 0.28 : 1; deckMat.depthWrite = !on; };
-  return { group, surfaces, rebuildSolids, setCutaway, dispose: () => disposables.forEach((d) => d.dispose()) };
+  const hiddenSet = new Set<string>();
+  const applyHidden = () => {
+    for (const [o, id] of tagged) {
+      const hide = id !== "" && hiddenSet.has(id);
+      o.visible = !hide; o.traverse((c) => c.layers.set(hide ? 1 : 0)); // layer 1: ignored by clicks
+    }
+  };
+  const setHidden = (ids: string[]) => { hiddenSet.clear(); ids.forEach((i) => hiddenSet.add(i)); applyHidden(); };
+  const attach = (o: THREE.Object3D) => { tagged.push([o, faceAt(o.position) ?? ""]); applyHidden(); };
+  // display modes, as in a modelling tool: solid, wireframe (edges only), x-ray (see-through with edges)
+  const edgeMat = keep(new THREE.LineBasicMaterial({ color: 0x1d1e1f, transparent: true, opacity: 0.55 }));
+  const setDisplay = (mode: "solid" | "wire" | "xray") => {
+    group.traverse((o) => {
+      const m = o as THREE.Mesh; if (!m.isMesh || m.userData.isEdge) return;
+      if (mode !== "solid" && !m.userData.edges) { const e = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry, 30), edgeMat); e.userData.isEdge = true; e.raycast = () => {}; m.add(e); m.userData.edges = e; }
+      if (m.userData.edges) (m.userData.edges as THREE.Object3D).visible = mode !== "solid";
+      for (const mat of Array.isArray(m.material) ? m.material : [m.material]) {
+        const u = mat.userData; if (!u.orig) u.orig = { t: mat.transparent, o: mat.opacity, d: mat.depthWrite };
+        mat.visible = mode !== "wire";
+        mat.transparent = mode === "xray" ? true : u.orig.t; mat.opacity = mode === "xray" ? 0.16 : u.orig.o; mat.depthWrite = mode === "xray" ? false : u.orig.d;
+      }
+    });
+    edgeMat.color.set(mode === "wire" ? 0xe6e4de : 0x1d1e1f); edgeMat.opacity = mode === "wire" ? 0.7 : 0.55;
+  };
+  const defaultHidden = hab.cylinder ? ["hull-z"] : ["z1"];
+  setHidden(defaultHidden);
+  return { group, surfaces, rebuildSolids, setCutaway, faces, defaultHidden, setHidden, attach, setDisplay, dispose: () => disposables.forEach((d) => d.dispose()) };
+
 }
 
 /** authentic NASA photograph used as the environment around the habitat */

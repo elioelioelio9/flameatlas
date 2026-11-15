@@ -37,7 +37,7 @@ export default function FlameHero({ onSimulate, onEvidence }: { onSimulate: () =
     // chord length of the line of sight at lateral position m through the ring of radius index i (Abel projection)
     const chord = new Float32Array(NR * NR);
     for (let m = 0; m < NR; m++) for (let i = m; i < NR; i++) { const x = (m + 0.5) * DX, r0 = Math.max(x, i * DX), r1 = (i + 1) * DX; chord[m * NR + i] = 2 * (Math.sqrt(r1 * r1 - x * x) - Math.sqrt(Math.max(0, r0 * r0 - x * x))); }
-    const eb = new Float32Array(NR), es = new Float32Array(NR);
+    const eb = new Float32Array(NR), es = new Float32Array(NR), et = new Float32Array(NR);
     const tracers = Array.from({ length: 260 }, () => ({ x: 0, y: 0, px: 0, py: 0, life: 0 }));
     const seed = (p: (typeof tracers)[number]) => { p.x = p.px = (Math.random() * 2 - 1) * LX * 0.5; p.y = p.py = Math.random() * LY; p.life = 0.4 + Math.random() * 1.2; };
     tracers.forEach(seed);
@@ -49,22 +49,29 @@ export default function FlameHero({ onSimulate, onEvidence }: { onSimulate: () =
     const paint = () => {
       const { view } = live.current; const d = img.data; const { Z, T, uc, vc, vort, solid, Tf } = sim;
       if (view === "vorticity") { sim.computeVorticity(); let m = 1; for (let c = 0; c < NR * NY; c++) if (!solid[c]) m = Math.max(m, Math.abs(vort[c])); vortMax += (m - vortMax) * 0.1; }
+      let sootSeen = 0;
       for (let j = 0; j < NY; j++) {
-        const row = (NY - 1 - j) * W * 4;
+        const row = (NY - 1 - j) * W * 4; const blueW = 1 - 0.9 * sstep(0.1, 0.6, sootSeen); let rowSoot = 0;
         if (view === "flame") {
           for (let i = 0; i < NR; i++) {
             const c = i + NR * j, z = Z[c]; if (solid[c]) { eb[i] = es[i] = 0; continue; }
             const q = (z - Z_ST) / (0.3 * Z_ST);
             eb[i] = Math.exp(-q * q) * ((Tf - T_INF) / 1350);
-            es[i] = sstep(1400, 1620, T[c]) * sstep(Z_ST, 1.5 * Z_ST, z) * (1 - sstep(3 * Z_ST, 7 * Z_ST, z));
+            es[i] = sstep(1490, 1630, T[c]) * sstep(Z_ST, 1.5 * Z_ST, z) * (1 - sstep(3 * Z_ST, 7 * Z_ST, z)); et[i] = T[c];
           }
           for (let m = 0; m < NR; m++) {
-            let b = 0, s = 0; for (let i = m; i < NR; i++) { const w = chord[m * NR + i]; b += eb[i] * w; s += es[i] * w; }
-            const ib = 1 - Math.exp(-b * 230), is = 1 - Math.exp(-s * 520);
-            const R = 255 * Math.min(1, 0.16 * ib + 1.0 * is + 0.25 * is * is), G = 255 * Math.min(1, 0.38 * ib + 0.74 * is + 0.25 * is * is), B = 255 * Math.min(1, 1.0 * ib + 0.3 * is + 0.3 * is * is);
+            let b = 0, s = 0, st = 0; for (let i = m; i < NR; i++) { const w = chord[m * NR + i]; b += eb[i] * w; s += es[i] * w; st += es[i] * w * et[i]; }
+            // soot glows like a black body: orange where it is cooler (tip, edges), yellow-white in the hot core;
+            // the blue reaction zone shows only where there is no soot in front of it (base of the flame, 0 g flame)
+            const ib = (1 - Math.exp(-b * 160)) * 0.85 * blueW, is = 1 - Math.exp(-s * 650);
+            const tc = s > 1e-9 ? sstep(1390, 1560, st / s) : 0, core = sstep(0.75, 1, is) * tc; rowSoot = Math.max(rowSoot, is);
+            const sr = 1.0, sg = 0.5 + 0.4 * tc + 0.1 * core, sb = 0.1 + 0.4 * tc * tc + 0.35 * core;
+            const vb = ib * (1 - 0.9 * is);
+            const R = 255 * Math.min(1, sr * is + 0.12 * vb), G = 255 * Math.min(1, sg * is + 0.32 * vb), B = 255 * Math.min(1, sb * is + 1.0 * vb);
             const A = Math.max(R, G, B, 1), k = 255 / A; // transparent where dark, so the page flow shows behind the flame
             for (const px of [NR + m, NR - 1 - m]) { const o = row + px * 4; d[o] = R * k; d[o + 1] = G * k; d[o + 2] = B * k; d[o + 3] = A; }
           }
+          sootSeen = Math.max(sootSeen, rowSoot);
         } else for (let i = 0; i < NR; i++) {
           const c = i + NR * j; let rgb: [number, number, number];
           if (solid[c]) rgb = [0.1, 0.1, 0.1];
@@ -92,17 +99,37 @@ export default function FlameHero({ onSimulate, onEvidence }: { onSimulate: () =
       const Wc = cv.width, Hc = cv.height, viewH = live.current.view === "flame" ? 0.066 : LY;
       zoom += (viewH - zoom) * 0.12; const s = Math.min(Hc / zoom, Wc / LX * (LY / zoom)) * 0.985, x0 = Wc / 2 - (LX * s) / 2, y0 = Hc - 2;
       const X = (x: number) => Wc / 2 + x * s, Y = (y: number) => y0 - y * s;
-      ctx.clearRect(0, 0, Wc, Hc); if (live.current.view !== "flame") { ctx.fillStyle = "#050606"; ctx.fillRect(0, 0, Wc, Hc); }
+      ctx.clearRect(0, 0, Wc, Hc);
       ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
       const v = live.current.view;
-      if (v === "flame") { ctx.globalCompositeOperation = "lighter"; ctx.filter = `blur(${Math.max(1, s * DX * 0.6)}px)`; ctx.drawImage(off, x0, y0 - LY * s, LX * s, LY * s); ctx.filter = `blur(${s * DX * 7}px)`; ctx.globalAlpha = 0.35; ctx.drawImage(off, x0, y0 - LY * s, LX * s, LY * s); ctx.filter = "none"; ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; }
+      if (v === "flame") {
+        // halo first (soft, warm, faint), then the flame itself, barely softened
+        ctx.globalCompositeOperation = "lighter";
+        ctx.filter = `blur(${s * DX * 9}px)`; ctx.globalAlpha = 0.22; ctx.drawImage(off, x0, y0 - LY * s, LX * s, LY * s);
+        ctx.filter = `blur(${Math.max(0.6, s * DX * 0.45)}px)`; ctx.globalAlpha = 1; ctx.drawImage(off, x0, y0 - LY * s, LX * s, LY * s);
+        ctx.filter = "none"; ctx.globalCompositeOperation = "source-over";
+      }
       else ctx.drawImage(off, x0, y0 - LY * s, LX * s, LY * s);
       // candle and wick
       const cr = GEOM.CANDLE_R * DX, ch = GEOM.CANDLE_H * DX, wh = GEOM.WICK_H * DX;
       const lit = Math.min(1, (sim.Tf - 1000) / 700);
-      const gr = ctx.createLinearGradient(0, Y(ch), 0, Y(0)); gr.addColorStop(0, v === "flame" ? `rgba(${90 + 70 * lit},${84 + 50 * lit},${74 + 20 * lit},1)` : "#3a3a38"); gr.addColorStop(1, v === "flame" ? "#141413" : "#2a2a29");
-      ctx.fillStyle = gr; ctx.fillRect(X(-cr), Y(ch), 2 * cr * s, ch * s + (Hc - y0) + 2);
-      ctx.strokeStyle = "#0c0c0c"; ctx.lineWidth = Math.max(2, GEOM.WICK_R * DX * s * 0.7); ctx.beginPath(); ctx.moveTo(X(0), Y(ch)); ctx.lineTo(X(0), Y(ch + wh)); ctx.stroke();
+      if (v === "flame") {
+        // wax: lit from above by the flame, rounded rim, a slightly translucent top
+        const gr = ctx.createLinearGradient(0, Y(ch), 0, Y(0));
+        gr.addColorStop(0, `rgb(${Math.round(196 + 40 * lit)},${Math.round(184 + 30 * lit)},${Math.round(160 + 10 * lit)})`); gr.addColorStop(0.25, "#a99b82"); gr.addColorStop(1, "#2a2620");
+        const side = ctx.createLinearGradient(X(-cr), 0, X(cr), 0); side.addColorStop(0, "rgba(0,0,0,.35)"); side.addColorStop(0.35, "rgba(0,0,0,0)"); side.addColorStop(0.7, "rgba(0,0,0,0)"); side.addColorStop(1, "rgba(0,0,0,.45)");
+        const r = cr * s * 0.12;
+        ctx.beginPath(); ctx.moveTo(X(-cr), Hc); ctx.lineTo(X(-cr), Y(ch) + r); ctx.quadraticCurveTo(X(-cr), Y(ch), X(-cr) + r, Y(ch)); ctx.lineTo(X(cr) - r, Y(ch)); ctx.quadraticCurveTo(X(cr), Y(ch), X(cr), Y(ch) + r); ctx.lineTo(X(cr), Hc); ctx.closePath();
+        ctx.fillStyle = gr; ctx.fill(); ctx.fillStyle = side; ctx.fill();
+        // wick: dark, slightly bent, glowing at the tip
+        ctx.strokeStyle = "#16120f"; ctx.lineWidth = Math.max(2, GEOM.WICK_R * DX * s * 0.8); ctx.lineCap = "round";
+        ctx.beginPath(); ctx.moveTo(X(0), Y(ch)); ctx.quadraticCurveTo(X(0), Y(ch + wh * 0.7), X(0.0006), Y(ch + wh)); ctx.stroke();
+        const tip = ctx.createRadialGradient(X(0.0006), Y(ch + wh), 0, X(0.0006), Y(ch + wh), s * DX * 1.4); tip.addColorStop(0, `rgba(255,120,40,${0.9 * lit})`); tip.addColorStop(1, "rgba(255,80,20,0)");
+        ctx.fillStyle = tip; ctx.fillRect(X(0.0006) - s * DX * 1.5, Y(ch + wh) - s * DX * 1.5, s * DX * 3, s * DX * 3);
+      } else {
+        ctx.fillStyle = "#2f2f2d"; ctx.fillRect(X(-cr), Y(ch), 2 * cr * s, ch * s + (Hc - y0) + 2);
+        ctx.strokeStyle = "#0c0c0c"; ctx.lineWidth = Math.max(2, GEOM.WICK_R * DX * s * 0.7); ctx.beginPath(); ctx.moveTo(X(0), Y(ch)); ctx.lineTo(X(0), Y(ch + wh)); ctx.stroke();
+      }
       // flame sheet contour on the field views
       if (v !== "flame") {
         ctx.strokeStyle = "rgba(255,255,255,.85)"; ctx.lineWidth = 1.2; ctx.beginPath();
@@ -148,6 +175,7 @@ export default function FlameHero({ onSimulate, onEvidence }: { onSimulate: () =
     return () => { cancelAnimationFrame(raf); ro.disconnect(); io.disconnect(); };
   }, []);
 
+  useEffect(() => { window.dispatchEvent(new CustomEvent("flow-dim", { detail: view !== "flame" })); return () => { window.dispatchEvent(new CustomEvent("flow-dim", { detail: false })); }; }, [view]);
   const vw = VIEWS.find((q) => q.id === view)!;
   const still = read.v < 0.005;
   return (
