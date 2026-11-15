@@ -62,7 +62,8 @@ export default function FlameHero({ onSimulate, onEvidence }: { onSimulate: () =
             let b = 0, s = 0; for (let i = m; i < NR; i++) { const w = chord[m * NR + i]; b += eb[i] * w; s += es[i] * w; }
             const ib = 1 - Math.exp(-b * 230), is = 1 - Math.exp(-s * 520);
             const R = 255 * Math.min(1, 0.16 * ib + 1.0 * is + 0.25 * is * is), G = 255 * Math.min(1, 0.38 * ib + 0.74 * is + 0.25 * is * is), B = 255 * Math.min(1, 1.0 * ib + 0.3 * is + 0.3 * is * is);
-            for (const px of [NR + m, NR - 1 - m]) { const o = row + px * 4; d[o] = R; d[o + 1] = G; d[o + 2] = B; d[o + 3] = 255; }
+            const A = Math.max(R, G, B, 1), k = 255 / A; // transparent where dark, so the page flow shows behind the flame
+            for (const px of [NR + m, NR - 1 - m]) { const o = row + px * 4; d[o] = R * k; d[o + 1] = G * k; d[o + 2] = B * k; d[o + 3] = A; }
           }
         } else for (let i = 0; i < NR; i++) {
           const c = i + NR * j; let rgb: [number, number, number];
@@ -91,7 +92,7 @@ export default function FlameHero({ onSimulate, onEvidence }: { onSimulate: () =
       const Wc = cv.width, Hc = cv.height, viewH = live.current.view === "flame" ? 0.066 : LY;
       zoom += (viewH - zoom) * 0.12; const s = Math.min(Hc / zoom, Wc / LX * (LY / zoom)) * 0.985, x0 = Wc / 2 - (LX * s) / 2, y0 = Hc - 2;
       const X = (x: number) => Wc / 2 + x * s, Y = (y: number) => y0 - y * s;
-      ctx.fillStyle = "#050606"; ctx.fillRect(0, 0, Wc, Hc);
+      ctx.clearRect(0, 0, Wc, Hc); if (live.current.view !== "flame") { ctx.fillStyle = "#050606"; ctx.fillRect(0, 0, Wc, Hc); }
       ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
       const v = live.current.view;
       if (v === "flame") { ctx.globalCompositeOperation = "lighter"; ctx.filter = `blur(${Math.max(1, s * DX * 0.6)}px)`; ctx.drawImage(off, x0, y0 - LY * s, LX * s, LY * s); ctx.filter = `blur(${s * DX * 7}px)`; ctx.globalAlpha = 0.35; ctx.drawImage(off, x0, y0 - LY * s, LX * s, LY * s); ctx.filter = "none"; ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; }

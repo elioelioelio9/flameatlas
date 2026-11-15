@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { api } from "../api";
 import { useApp, useAsync } from "../state";
 import FlameHero from "./FlameHero";
+import FlowBackdrop from "./FlowBackdrop";
 import type { CoverageResponse, EarthApp, Investigation } from "../types";
 
 type BodyId = "iss" | "earth" | "moon" | "mars";
@@ -72,6 +73,7 @@ export default function MissionControl() {
 
   return (
     <div className="mission">
+      <FlowBackdrop />
       <FlameHero onSimulate={() => go("firelab")} onEvidence={() => go("evidence")} />
 
       <section className="bases">
@@ -80,6 +82,10 @@ export default function MissionControl() {
           <h2>Four bases, each with rooms you can set on fire.</h2>
           <p>Open a base, zoom from the outside into a room, choose the material and the air, and ignite. The flow, the smoke and the oxygen are computed live with the gravity of that world.</p>
         </header>
+        <figure className="ph tool-shot">
+          <img src="/assets/photos/firelab_tool.png" alt="Fire Lab: the Moon habitat 15 s after a cotton panel ignites, with streamlines, velocity vectors, a vorticity plane and the smoke layer under the ceiling." loading="lazy" />
+          <figcaption><span>The simulation: a cotton panel burning in the Moon habitat at 1/6 g, 15 s after ignition. Streamlines and arrows show the air, the colour plane its rotation, the dark cloud the smoke collecting under the ceiling.</span><span className="mono meta">Fire Lab screenshot</span></figcaption>
+        </figure>
         <div className="bases-grid">
           {BODIES.map((b) => (
             <article key={b.id}>

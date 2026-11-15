@@ -49,7 +49,7 @@ export interface Params {
 export type FlameState = "idle" | "igniting" | "burning" | "extinguished" | "burnt-out";
 
 const GAMMA = 1.4;
-const D_REF = 1.2e-3;      // effective (sub-grid turbulent + molecular) diffusivity at 1 atm, m²/s
+export const D_REF = 1.2e-3;      // effective (sub-grid turbulent + molecular) diffusivity at 1 atm, m²/s
 const K_MIX = 5.0;         // mixing rate in a flame cell (1/s)
 const HEAT = 6000;         // K of temperature rise per unit O2 mole fraction consumed in a cell
 const SMOKE = 55;

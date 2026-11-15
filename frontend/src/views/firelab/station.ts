@@ -322,14 +322,10 @@ export function buildBackdrop(hab: Habitat, scene: THREE.Scene, sim: CabinFire):
 
 /** small, physical ignition source: an avionics box with an overheating cable bundle */
 export function buildIgnitionSource(): THREE.Group {
+  // a flat electric igniter strip at the edge of the fuel panel: no cables, no detail
   const g = new THREE.Group();
-  const box = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.1, 0.22), new THREE.MeshStandardMaterial({ color: 0x2f3236, roughness: 0.5, metalness: 0.4 }));
-  box.position.y = 0.05; g.add(box);
-  const hot = new THREE.MeshStandardMaterial({ color: 0x222222, emissive: 0xff5a1a, emissiveIntensity: 0 });
-  for (let q = 0; q < 4; q++) {
-    const pts = [new THREE.Vector3(0.15, 0.04 + q * 0.012, -0.05 + q * 0.035), new THREE.Vector3(0.3, 0.025, -0.035 + q * 0.025), new THREE.Vector3(0.45, 0.012, -0.02 + q * 0.018)];
-    g.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 16, 0.009, 6), hot));
-  }
+  const hot = new THREE.MeshStandardMaterial({ color: 0x3a3d40, roughness: 0.6, emissive: 0xff5a1a, emissiveIntensity: 0 });
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.02, 0.3), hot); bar.position.set(0.39, 0.01, 0); g.add(bar);
   g.userData.hot = hot;
   return g;
 }

@@ -7,11 +7,12 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
-import { ALARM, CabinFire, MATERIALS, type FlameState, type Params } from "../sim/firesim";
-import { habitatById, roomsOf, type Habitat } from "../sim/habitats";
+import { ALARM, CabinFire, D_REF, MATERIALS, type FlameState, type Params } from "../sim/firesim";
+import { habitatById, roomsOf, type Habitat, type Vent } from "../sim/habitats";
 import { useApp } from "../state";
 import { buildHabitatScene, buildIgnitionSource } from "./firelab/station";
-import { buildEnvironment } from "./firelab/environment";
+import { buildStage } from "./firelab/stage";
+import BaseView from "./firelab/BaseView";
 import { sliceMaterial, volumeMaterial } from "./firelab/shaders";
 import { cmap, cmapCss, CMAP_ID, type CMap } from "./firelab/colormaps";
 import { WORLD_TEXT } from "../scenes/worlds";
@@ -37,7 +38,10 @@ export const PRESETS: FirePreset[] = [
 const WORLDS: { id: WorldId; label: string }[] = [{ id: "iss", label: "ISS" }, { id: "moon", label: "Moon" }, { id: "mars", label: "Mars" }, { id: "earth", label: "Earth" }];
 const G_MARKS = [{ g: 0, label: "0 g" }, { g: 1.62, label: "Moon" }, { g: 3.71, label: "Mars" }, { g: 9.81, label: "Earth" }];
 
-type SliceField = "off" | "temperature" | "o2" | "smoke" | "speed" | "vorticity";
+type SliceField = "off" | "temperature" | "o2" | "smoke" | "speed" | "vorticity" | "pressure" | "peclet";
+type Tool = "orbit" | "source" | "supply" | "return" | "probe";
+type SecAxis = "off" | "x" | "y" | "z";
+type ViewName = "iso" | "top" | "front" | "side";
 type Axis = "x" | "y" | "z";
 type Volume = "off" | "heat" | "smoke";
 interface FieldDef { label: string; unit: string; cmap: CMap; range: (o2: number) => [number, number]; fmt: (v: number) => string }
@@ -47,17 +51,19 @@ const FIELDS: Record<Exclude<SliceField, "off">, FieldDef> = {
   smoke: { label: "Smoke", unit: "rel.", cmap: "gray", range: () => [0, 1], fmt: (v) => v.toFixed(2) },
   speed: { label: "Air speed", unit: "m/s", cmap: "viridis", range: () => [0, 0.6], fmt: (v) => v.toFixed(2) },
   vorticity: { label: "Vorticity", unit: "1/s", cmap: "plasma", range: () => [0, 3], fmt: (v) => v.toFixed(1) },
+  pressure: { label: "Dynamic pressure (vs cabin mean)", unit: "mPa", cmap: "diverging", range: () => [-20, 20], fmt: (v) => v.toFixed(1) },
+  peclet: { label: "Cell Péclet |u|Δx/D (convection ÷ diffusion)", unit: "–", cmap: "viridis", range: () => [0, 20], fmt: (v) => v.toFixed(0) },
 };
 
 interface Hud {
   t: number; state: FlameState; hrr: number; minO2: number; maxT: number; area: number; charred: number; dp: number;
   det: { id: string; label: string; alarmAt: number | null; reading: number }[];
-  layer: number | null; smokeVol: number; headT: number; headO2: number; headS: number; far: boolean;
+  layer: number | null; smokeVol: number; headT: number; headO2: number; headS: number; far: boolean; wallMax: number; wallQ: number; placed: boolean;
   div: number; it: number; cfl: number; ms: number; vmax: number; uref: number; range: [number, number] | null; sealed: boolean; rate: number;
 }
-const EMPTY: Hud = { layer: null, smokeVol: 0, headT: 0, headO2: 0.21, headS: 0, far: true, t: 0, state: "idle", hrr: 0, minO2: 0.21, maxT: 0, area: 0, charred: 0, dp: 0, det: [], div: 0, it: 0, cfl: 0, ms: 0, vmax: 0, uref: 0.3, range: null, sealed: true, rate: 0 };
-type Live = { vecNorm: boolean; smoke: boolean; flames: boolean; vectors: boolean; density: number; slice: SliceField; axis: Axis; slicePos: number; volume: Volume; stream: boolean; speed: number; paused: boolean; marks: boolean; probe: boolean };
-type Api = { ignite: () => void; reset: () => void; door: (id: string, open: boolean) => void; fly: (zone: string | null) => void };
+const EMPTY: Hud = { wallMax: 0, wallQ: 0, placed: false, layer: null, smokeVol: 0, headT: 0, headO2: 0.21, headS: 0, far: true, t: 0, state: "idle", hrr: 0, minO2: 0.21, maxT: 0, area: 0, charred: 0, dp: 0, det: [], div: 0, it: 0, cfl: 0, ms: 0, vmax: 0, uref: 0.3, range: null, sealed: true, rate: 0 };
+type Live = { tool: Tool; sec: SecAxis; secPos: number; secFlip: boolean; wallHeat: boolean; vecNorm: boolean; smoke: boolean; flames: boolean; vectors: boolean; density: number; slice: SliceField; axis: Axis; slicePos: number; volume: Volume; stream: boolean; speed: number; paused: boolean; marks: boolean; probe: boolean };
+type Api = { ignite: () => void; reset: () => void; door: (id: string, open: boolean) => void; fly: (zone: string | null) => void; view: (v: ViewName) => void };
 
 function download(name: string, text: string) { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type: "text/csv" })); a.download = name; a.click(); }
 
@@ -66,6 +72,13 @@ export default function FireLab() {
   const { firePreset, setFirePreset, fireSetup, setFireSetup, setEvidenceQuery, go } = useApp();
   const initial = PRESETS.find((p) => p.id === (firePreset ?? "").split(":")[0]) ?? PRESETS.find((p) => p.habitat === fireSetup?.world) ?? PRESETS[0];
   const [habId, setHabId] = useState<string>(initial.habitat);
+  const [view, setView] = useState<"base" | "inside">((firePreset ?? "").endsWith(":base") ? "base" : "inside");
+  const [tool, setTool] = useState<Tool>("orbit");
+  const [sec, setSec] = useState<SecAxis>("off");
+  const [secPos, setSecPos] = useState(0.6);
+  const [secFlip, setSecFlip] = useState(false);
+  const [wallHeat, setWallHeat] = useState(false);
+  const [added, setAdded] = useState<Record<string, Vent[]>>({});
   const [focus, setFocus] = useState<string | null>(null);         // "hab/zone" the camera is in, null = overview of the base
   const pendingFocus = useRef<string | null>(null);
   const [linked, setLinked] = useState<string | null>(null);
@@ -96,7 +109,11 @@ export default function FireLab() {
   const [hud, setHud] = useState<Hud>(EMPTY);
   const [more, setMore] = useState(false);
 
-  const hab = habitatById(habId); const world = hab.world;
+  const habBase = habitatById(habId); const world = habBase.world;
+  const extra = useMemo(() => added[habId] ?? [], [added, habId]);
+  const hab = useMemo(() => ({ ...habBase, vents: [...habBase.vents, ...extra] }), [habBase, extra]);
+  const addVent = (v: Vent) => setAdded((a) => ({ ...a, [habId]: [...(a[habId] ?? []), v] }));
+  const removeVent = (id: string) => setAdded((a) => ({ ...a, [habId]: (a[habId] ?? []).filter((v) => v.id !== id) }));
   const entries = useMemo(() => roomEntries(world), [world]);
   const [vecNorm, setVecNorm] = useState(false);
   const params: Params = useMemo(() => ({
@@ -108,9 +125,9 @@ export default function FireLab() {
   const paramsRef = useRef(params); paramsRef.current = params;
   const [marks, setMarks] = useState(false);
   const [probe, setProbe] = useState(false);
-  const live = useRef<Live>({ vecNorm, smoke, flames, vectors, density, slice, axis, slicePos, volume, stream, speed, paused, marks, probe });
+  const live = useRef<Live>({ tool, sec, secPos, secFlip, wallHeat, vecNorm, smoke, flames, vectors, density, slice, axis, slicePos, volume, stream, speed, paused, marks, probe: tool === "probe" });
   const volEff: Volume = volume !== "off" ? volume : smoke ? "smoke" : "off";
-  live.current = { vecNorm, smoke, flames, vectors, density, slice, axis, slicePos, volume: volEff, stream, speed, paused, marks, probe };
+  live.current = { tool, sec, secPos, secFlip, wallHeat, vecNorm, smoke, flames, vectors, density, slice, axis, slicePos, volume: volEff, stream, speed, paused, marks, probe };
   const api = useRef<Api | null>(null);
 
   useEffect(() => {
@@ -123,6 +140,7 @@ export default function FireLab() {
 
   const applyPreset = (pr: FirePreset) => {
     setPreset(pr.id); setG(pr.g); setVent(pr.vent); setO2(pr.o2); setPressure(pr.p); setMaterialId(pr.material); setReverse(false);
+    setView("inside");
     if (pr.habitat !== world) { pendingFocus.current = null; setFocus(null); setHabId(pr.habitat); }
     else { const s = simRef.current; if (s) { s.setParams({ gravity: pr.g, ventSpeed: pr.vent / 100, ventReverse: false, o2: pr.o2 / 100, pressureKpa: pr.p, material: MATERIALS.find((m) => m.id === pr.material)! }); s.reset(); } }
   };
@@ -130,6 +148,7 @@ export default function FireLab() {
     if (!firePreset) return;
     const [id, v] = firePreset.split(":");
     const pr = PRESETS.find((p) => p.id === id); if (pr) applyPreset(pr);
+    if (v === "base") setView("base");
     if (pr && v !== "base") { const z = habitatById(pr.habitat).zones[0].id; if (pr.habitat === world) { api.current?.fly(z); } else pendingFocus.current = z; setFocus(`${pr.habitat}/${z}`); }
     setFirePreset(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -144,6 +163,7 @@ export default function FireLab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fireSetup]);
   const pick = (e: RoomEntry | null) => {
+    setView("inside");
     if (!e) { setFocus(null); api.current?.fly(null); return; }
     setFocus(`${e.hab}/${e.zone}`);
     if (e.hab !== habId) { pendingFocus.current = e.zone; setHabId(e.hab); } else api.current?.fly(e.zone);
@@ -158,7 +178,7 @@ export default function FireLab() {
   const range = hud.range ?? (fd ? fd.range(o2) : [0, 1]);
   const gLabel = g === 0 ? "0 g (orbit)" : `${(g / 9.81).toFixed(g < 9.81 ? 2 : 1)} g`;
   const status: Record<FlameState, string> = {
-    idle: hud.far ? "Pick a zone, or scroll in to enter the habitat" : "Press Ignite, or click a wall or a bench to move the fire there",
+    idle: tool === "source" ? "Click a wall, the floor or a bench to place the fuel panel" : hud.placed ? "Fuel panel placed: press Ignite" : "Use Place fire source, then Ignite",
     igniting: `Igniter on · ${hud.t.toFixed(0)} s`,
     burning: `Burning · ${hud.t.toFixed(0)} s · ${hud.area.toFixed(2)} m² alight`,
     extinguished: `The flame went out after ${hud.t.toFixed(0)} s — oxygen starvation`,
@@ -171,21 +191,41 @@ export default function FireLab() {
         <nav className="seg big" aria-label="World">
           {WORLDS.map((w) => <button key={w.id} aria-pressed={world === w.id} onClick={() => applyPreset(PRESETS.find((p) => p.habitat === w.id)!)}>{w.label}</button>)}
         </nav>
+        <div className="seg" role="group" aria-label="View">
+          <button aria-pressed={view === "base"} onClick={() => setView("base")}>Base · outside</button>
+          <button aria-pressed={view === "inside"} onClick={() => setView("inside")}>Fire simulation · inside</button>
+        </div>
         <span className="grow" />
         <p className="mono meta">{WORLD_TEXT[world].name}</p>
       </header>
       <nav className="lab2-zones" aria-label="Zones of the base">
-        <button aria-pressed={focus === null} onClick={() => pick(null)}>Whole base</button>
         {entries.map((e) => <button key={`${e.hab}/${e.zone}`} aria-pressed={focus === `${e.hab}/${e.zone}`} className={e.hab === habId ? "live" : ""} onClick={() => pick(e)}>{e.label}</button>)}
         <span className="grow" />
         <span className="mono small faint">simulated now: {hab.short}{hab.zones.length > 1 ? ` (${hab.zones.length} linked zones)` : ""} · {hab.nx}×{hab.ny}×{hab.nz} cells of {(hab.dx * 100).toFixed(0)} cm</span>
       </nav>
+      {view === "base" ? <BaseView world={world} onEnter={(id) => { setHabId(id); setFocus(null); pendingFocus.current = null; setView("inside"); }} /> : <>
       {linked && <p className="lab2-linked">Conditions set from your Evidence question: “{linked}”. <button className="tlink inline" onClick={() => setLinked(null)}>Dismiss</button></p>}
 
         <div className="lab2-main">
           <section className="lab2-stage">
-            <Interior key={hab.id} hab={hab} entries={entries} pickRef={pickRef} pendingFocus={pendingFocus} paramsRef={paramsRef} live={live} simRef={simRef} api={api} setHud={setHud} setDoors={setDoors} />
+            <Interior key={`${hab.id}:${extra.map((v) => v.id).join(",")}`} hab={hab} onAddVent={addVent} entries={entries} pickRef={pickRef} pendingFocus={pendingFocus} paramsRef={paramsRef} live={live} simRef={simRef} api={api} setHud={setHud} setDoors={setDoors} />
             <div className="lab-status mono">{status[hud.state]}</div>
+            <div className="lab-tools" role="toolbar" aria-label="Tools">
+              <span className="k">Tool</span>
+              {([["orbit", "Orbit"], ["source", "Place fire source"], ["supply", "Add supply vent"], ["return", "Add return vent"], ["probe", "Probe velocity"]] as [Tool, string][]).map(([t, l]) => (
+                <button key={t} aria-pressed={tool === t} onClick={() => setTool(t)}>{l}</button>
+              ))}
+              <span className="k">View</span>
+              {([["iso", "3-D"], ["top", "Top (plan)"], ["front", "Front"], ["side", "Side"]] as [ViewName, string][]).map(([v, l]) => (
+                <button key={v} onClick={() => { if (v === "top" && sec === "off") { setSec("y"); setSecPos(0.7); } api.current?.view(v); }}>{l}</button>
+              ))}
+              <span className="k">Section</span>
+              <div className="sec">{(["off", "x", "y", "z"] as SecAxis[]).map((a) => <button key={a} aria-pressed={sec === a} onClick={() => setSec(a)}>{a === "off" ? "None" : a}</button>)}</div>
+              {sec !== "off" && <>
+                <input type="range" min={0} max={1} step={0.01} value={secPos} onChange={(e) => setSecPos(Number(e.target.value))} aria-label="Section position" />
+                <button onClick={() => setSecFlip(!secFlip)}>Flip side</button>
+              </>}
+            </div>
             {(fd || vectors) && (
               <div className="cmap-legend">
                 {fd && <>
@@ -202,7 +242,7 @@ export default function FireLab() {
               <button className="tlink" onClick={() => api.current?.reset()}>Reset</button>
               <div className="seg" role="group" aria-label="Speed">{[1, 2, 4].map((s) => <button key={s} aria-pressed={speed === s} onClick={() => setSpeed(s)}>{s}×</button>)}</div>
               <span className="grow" />
-              <span className="mono small faint">drag to orbit · scroll to zoom from the whole base into a room · click a surface to move the fire there</span>
+              <span className="mono small faint">{tool === "orbit" ? "drag to orbit · right-drag to pan · scroll to zoom · drag the fuel panel to move it" : tool === "source" ? "click a surface to place the fuel panel" : tool === "probe" ? "click in the room to measure the air velocity" : "click a wall, the floor or the ceiling of the room to add the vent (the simulation restarts)"}</span>
             </div>
           </section>
 
@@ -218,6 +258,7 @@ export default function FireLab() {
             <div className="seg marks">{G_MARKS.map((m) => <button key={m.label} aria-pressed={Math.abs(g - m.g) < 0.01} onClick={() => setG(m.g)}>{m.label}</button>)}</div>
             <label className="range"><span>Airflow (fans) <b className="mono">{vent === 0 ? "off" : `${vent} cm/s`}</b></span><input type="range" min={0} max={50} step={1} value={vent} onChange={(e) => setVent(Number(e.target.value))} /></label>
             <label className="check"><input type="checkbox" checked={reverse} onChange={(e) => setReverse(e.target.checked)} />Reverse the airflow (swap supply and return)</label>
+            {extra.length > 0 && <ul className="vent-list">{extra.map((v) => <li key={v.id}><span>{v.label}</span><button className="tlink small" onClick={() => removeVent(v.id)}>Remove</button></li>)}</ul>}
             <label className="range"><span>Oxygen <b className="mono">{o2} %</b></span><input type="range" min={12} max={100} step={0.5} value={o2} onChange={(e) => setO2(Number(e.target.value))} /></label>
             <label className="range"><span>Cabin pressure <b className="mono">{pressure.toFixed(1)} kPa</b></span><input type="range" min={20} max={120} step={0.5} value={pressure} onChange={(e) => setPressure(Number(e.target.value))} /></label>
             <label className="range"><span>Cabin temperature <b className="mono">{ambient} °C</b></span><input type="range" min={5} max={45} step={1} value={ambient} onChange={(e) => setAmbient(Number(e.target.value))} /></label>
@@ -253,9 +294,10 @@ export default function FireLab() {
             <h2 className="col-h">Analysis</h2>
             <div className="checks">
               <label className="check"><input type="checkbox" checked={marks} onChange={(e) => setMarks(e.target.checked)} />Mark the extremes (hottest, least O₂, fastest air, pressure max / min)</label>
-              <label className="check"><input type="checkbox" checked={probe} onChange={(e) => setProbe(e.target.checked)} />Probe: click to measure the air velocity vector</label>
+              <label className="check"><input type="checkbox" checked={wallHeat} onChange={(e) => setWallHeat(e.target.checked)} />Wall heating (conduction into the walls)</label>
             </div>
-            {probe && <p className="small faint">While the probe is on, a click measures instead of moving the fire. The arrow is drawn at 2 m per m/s, so 10 cm of arrow is 5 cm/s of air. Click on the colour plane to measure inside the air.</p>}
+            {wallHeat && <p className="small faint">Each wall cell is a 3 mm aluminium skin (ρ c e = 7.3 kJ/m²K) heated by the gas next to it, q = h (T<sub>gas</sub> − T<sub>wall</sub>) with h = 15 W/m²K (convection plus linearised radiation), outer face insulated. One-way: the wall does not cool the gas in the solver. Colour scale 20–150 °C.</p>}
+            {tool === "probe" && <p className="small faint">A click measures instead of moving the fire. The arrow is drawn at 2 m per m/s, so 10 cm of arrow is 5 cm/s of air. Click on the colour plane to measure inside the air.</p>}
             {marks && <p className="small faint">Pressure here is the dynamic part only (ρ·φ/Δt from the projection step), relative to the cabin mean. The uniform rise of a sealed cabin is in the readouts below.</p>}
 
             <p className="small faint">Reading the flow: under a smoke layer the arrows often point down. That is the slow return flow that replaces the air the plume carries up; the smoke itself stays up because it is lighter. Arrow length is proportional to speed, so compare lengths before directions.</p>
@@ -268,6 +310,7 @@ export default function FireLab() {
               <div><dt>Cabin pressure rise</dt><dd className="mono">{hud.sealed ? `${hud.dp.toFixed(0)} Pa` : "vented"}</dd></div>
               <div><dt>Smoke layer base</dt><dd className="mono">{hud.state === "idle" ? "—" : g < 0.05 ? "no layer without gravity" : hud.layer === null ? "no layer yet" : `${hud.layer.toFixed(1)} m above the floor`}</dd></div>
               <div><dt>Volume in smoke</dt><dd className="mono">{(hud.smokeVol * 100).toFixed(0)} % <span className="faint">above alarm level</span></dd></div>
+              {wallHeat && <div><dt>Hottest wall / heat into walls</dt><dd className="mono">{(ambient + hud.wallMax).toFixed(0)} °C · {(hud.wallQ / 1000).toFixed(2)} kW</dd></div>}
               <div><dt>At head height (1.6 m)</dt><dd className="mono">{(ambient + hud.headT).toFixed(0)} °C · O₂ {(hud.headO2 * 100).toFixed(1)} %</dd></div>
             </dl>
             <canvas id="hrr" width={460} height={60} className="spark" />
@@ -279,6 +322,7 @@ export default function FireLab() {
             <button className="tlink small" onClick={askEvidence}>NASA evidence for these conditions</button>
           </aside>
         </div>
+      </>}
     </div>
   );
 }
@@ -286,6 +330,7 @@ export default function FireLab() {
 // ================================================================== inside: the simulation
 interface InteriorProps {
   hab: Habitat;
+  onAddVent: (v: Vent) => void;
   entries: RoomEntry[];
   pickRef: React.MutableRefObject<(e: RoomEntry | null) => void>;
   pendingFocus: React.MutableRefObject<string | null>;
@@ -297,7 +342,7 @@ interface InteriorProps {
   setDoors: (d: Record<string, boolean>) => void;
 }
 
-function Interior({ hab, entries, pickRef, pendingFocus, paramsRef, live, simRef, api, setHud, setDoors }: InteriorProps) {
+function Interior({ hab, onAddVent, entries, pickRef, pendingFocus, paramsRef, live, simRef, api, setHud, setDoors }: InteriorProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const mount = mountRef.current!;
@@ -311,22 +356,32 @@ function Interior({ hab, entries, pickRef, pendingFocus, paramsRef, live, simRef
     mount.appendChild(renderer.domElement);
     const scene = new THREE.Scene();
     const pm = new THREE.PMREMGenerator(renderer); scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture; scene.environmentIntensity = 0.25;
-    const env = buildEnvironment(hab, scene, sim, renderer);
-    const camera = new THREE.PerspectiveCamera(46, 1, 0.05, 9000);
-    const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.minDistance = 0.5; controls.maxDistance = 16 * env.k; controls.zoomSpeed = 1.5;
-    if (hab.world !== "iss" && !(hab.world === "earth" && hab.fit === "main")) controls.maxPolarAngle = Math.PI * 0.497;
+    renderer.localClippingEnabled = true;
+    const stage = buildStage(scene, lx, ly, lz);
+    const camera = new THREE.PerspectiveCamera(42, 1, 0.03, 400);
+    const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.dampingFactor = 0.12; controls.minDistance = 0.5; controls.maxDistance = Math.max(lx, lz) * 3 + 6; controls.maxPolarAngle = Math.PI * 0.499;
     // one continuous view: the whole base from outside, and the same camera flown into a room
     type Pose = { pos: THREE.Vector3; target: THREE.Vector3 };
     const poseOf = (zone: string | null): Pose => {
-      if (zone === null) { const d = 7 * env.k; return { pos: new THREE.Vector3(lx / 2 + d * 0.55, ly / 2 + d * 0.4, lz / 2 + d * 0.72), target: new THREE.Vector3(lx / 2, ly / 2, lz / 2) }; }
+      if (zone === null) { const L = Math.max(lx, lz); return hab.cylinder ? { pos: new THREE.Vector3(lx / 2 - L * 0.32, ly * 1.3, -L * 0.75), target: new THREE.Vector3(lx / 2, ly * 0.4, lz * 0.55) } : { pos: new THREE.Vector3(lx / 2 - L * 0.1, ly + L * 0.55, lz + L * 0.75), target: new THREE.Vector3(lx / 2 + L * 0.03, ly * 0.25, lz / 2) }; }
       const b = (hab.zones.find((z) => z.id === zone) ?? hab.zones[0]).box;
       const cx = ((b[0] - 1 + b[1]) / 2) * dx, cy = ((b[2] - 1 + b[3]) / 2) * dx, cz = ((b[4] - 1 + b[5]) / 2) * dx, Lz = Math.max(3.5, (b[1] - b[0] + 1) * dx, (b[5] - b[4] + 1) * dx);
       return { pos: new THREE.Vector3(cx - Lz * 0.14, cy + 0.4 + Lz * 0.72, cz + Lz * 0.74), target: new THREE.Vector3(cx, cy - 0.15, cz) };
     };
-    const start = poseOf(pendingFocus.current); pendingFocus.current = null;
+    const start = poseOf(null); const firstZone = pendingFocus.current; pendingFocus.current = null;
     camera.position.copy(start.pos); controls.target.copy(start.target);
     let flight: { from: Pose; to: Pose; t: number } | null = null;
+    if (firstZone) flight = { from: start, to: poseOf(firstZone), t: 0 };
     const fly = (zone: string | null) => { flight = { from: { pos: camera.position.clone(), target: controls.target.clone() }, to: poseOf(zone), t: 0 }; };
+    const viewPose = (v: ViewName): Pose => {
+      const c = new THREE.Vector3(lx / 2, ly * 0.4, lz / 2), L = Math.max(lx, ly * 1.6, lz);
+      const fov = (camera.fov * Math.PI) / 180, d = (L * 0.62) / Math.tan(fov / 2) / Math.min(1.6, Math.max(0.8, camera.aspect));
+      if (v === "top") return { pos: new THREE.Vector3(c.x, ly + d * 0.95, c.z + 0.001), target: c.clone().setY(0) };
+      if (v === "front") return { pos: new THREE.Vector3(c.x, ly * 0.5, lz + d * 0.8), target: c.clone().setY(ly * 0.5) };
+      if (v === "side") return { pos: new THREE.Vector3(lx + d * 0.8, ly * 0.5, c.z), target: c.clone().setY(ly * 0.5) };
+      return poseOf(null);
+    };
+    const setView = (v: ViewName) => { flight = { from: { pos: camera.position.clone(), target: controls.target.clone() }, to: viewPose(v), t: 0 }; };
 
     scene.add(new THREE.HemisphereLight(0xf0f0ed, 0x4a4842, 0.55));
     for (const z of hab.zones) { const b = z.box; const pl = new THREE.PointLight(0xfff4e6, hab.walls === "racks" ? 1.0 : 1.8, 9, 1.5); pl.position.set(((b[0] + b[1]) / 2 - 0.5) * dx, Math.min(ly - 0.2, (b[3] - 1) * dx - 0.15), lz / 2); scene.add(pl); }
@@ -390,7 +445,7 @@ function Interior({ hab, entries, pickRef, pendingFocus, paramsRef, live, simRef
     const resize = () => {
       const W = mount.clientWidth, H = mount.clientHeight; renderer.setSize(W, H, false); composer.setSize(W, H);
       renderer.domElement.style.width = "100%"; renderer.domElement.style.height = "100%"; camera.aspect = W / H; camera.updateProjectionMatrix();
-      smokeP.setViewportHeight(H * renderer.getPixelRatio()); flameP.setViewportHeight(H * renderer.getPixelRatio()); env.setViewportHeight(H * renderer.getPixelRatio());
+      smokeP.setViewportHeight(H * renderer.getPixelRatio()); flameP.setViewportHeight(H * renderer.getPixelRatio());
     };
     const ro = new ResizeObserver(resize); ro.observe(mount); resize();
 
@@ -399,30 +454,129 @@ function Interior({ hab, entries, pickRef, pendingFocus, paramsRef, live, simRef
     const onDown = (e: PointerEvent) => { down = { x: e.clientX, y: e.clientY }; flight = null; };
     const onWheel = () => { flight = null; };
     renderer.domElement.addEventListener("wheel", onWheel, { passive: true });
-    const onUp = (e: PointerEvent) => {
-      const d0 = down; down = null; if (!d0 || Math.hypot(e.clientX - d0.x, e.clientY - d0.y) > 5) return;
-      const r = renderer.domElement.getBoundingClientRect(); ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
-      ray.setFromCamera(ndc, camera);
-      if (farNow) return; // from outside, a click only orbits: enter a room first
-      if (live.current.probe) { measureAt(); return; }
-      const hit = ray.intersectObjects(habScene.surfaces, false)[0]; if (!hit) return;
+    const setNdc = (e: PointerEvent) => { const r = renderer.domElement.getBoundingClientRect(); ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); ray.setFromCamera(ndc, camera); };
+    /** surface under the cursor: point, axis-aligned normal into the gas, and the gas cell in front of it */
+    const surfaceHit = () => {
+      const hit = ray.intersectObjects(habScene.surfaces, false).find((h) => !secOn || secPlane.distanceToPoint(h.point) >= 0); if (!hit) return null;
       const nW = hit.face ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld) : new THREE.Vector3(0, 1, 0);
       if (nW.dot(ray.ray.direction) > 0) nW.negate();
       const a = [Math.abs(nW.x), Math.abs(nW.y), Math.abs(nW.z)], ax = a.indexOf(Math.max(...a));
       const n: [number, number, number] = [0, 0, 0]; n[ax] = Math.sign([nW.x, nW.y, nW.z][ax]) || 1;
       const p = hit.point.clone().addScaledVector(new THREE.Vector3(...n), dx * 0.5);
-      const [i, j, k] = sim.cellOf(p.x, p.y, p.z);
-      sim.reset(); smokeP.clear(); flameP.clear();
-      if (sim.placeSource(i, j, k, n)) sim.ignite();
+      return { point: hit.point.clone(), n, ax, cell: sim.cellOf(p.x, p.y, p.z) };
     };
+    type SurfHit = NonNullable<ReturnType<typeof surfaceHit>>;
+    /** a vent can only sit on the outer boundary of the solver grid, in front of a gas cell */
+    const ventAt = (h: SurfHit) => {
+      const [i, j, k] = h.cell, L = [lx, ly, lz][h.ax], p = [h.point.x, h.point.y, h.point.z][h.ax];
+      const side = h.n[h.ax] > 0 && p < dx * 0.6 ? 0 : h.n[h.ax] < 0 && p > L - dx * 0.6 ? 1 : -1; if (side < 0) return null;
+      if (sim.solid[i + nx * (j + ny * k)]) return null;
+      const face = (["x", "y", "z"][h.ax] + side) as Vent["face"];
+      const [ca, cb, na, nb] = h.ax === 0 ? [j + 1, k + 1, ny, nz] : h.ax === 1 ? [i + 1, k + 1, nx, nz] : [i + 1, j + 1, nx, ny];
+      return { face, a: [Math.max(1, ca - 1), Math.min(na, ca + 2)] as [number, number], b: [Math.max(1, cb - 1), Math.min(nb, cb + 2)] as [number, number] };
+    };
+    // ghost outline: where the source or the vent will go
+    const ghost = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.5, -0.5, 0), new THREE.Vector3(0.5, -0.5, 0), new THREE.Vector3(0.5, 0.5, 0), new THREE.Vector3(-0.5, 0.5, 0)]), new THREE.LineBasicMaterial({ color: 0xf0f0ed, depthTest: false }));
+    ghost.renderOrder = 11; ghost.visible = false; scene.add(ghost);
+    const showGhost = (h: SurfHit | null, w: number, hgt: number) => {
+      if (!h) { ghost.visible = false; return; }
+      const n = new THREE.Vector3(...h.n); ghost.position.copy(h.point).addScaledVector(n, 0.01);
+      ghost.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n); ghost.scale.set(w, hgt, 1); ghost.visible = true;
+    };
+    let dragging = false;
+    const panelSize = () => { const f = paramsRef.current.fuelSize; return [(2 * f + 1) * dx, (2 * Math.max(1, Math.round(f / 2)) + 1) * dx]; };
+    const onMove = (e: PointerEvent) => {
+      const tool = live.current.tool;
+      if (!dragging && tool !== "source" && tool !== "supply" && tool !== "return") {
+        if (tool === "orbit" && !down) { setNdc(e); renderer.domElement.style.cursor = panel.visible && ray.intersectObject(panel)[0] ? "move" : ""; }
+        ghost.visible = false; return;
+      }
+      setNdc(e); const h = surfaceHit();
+      if (tool === "supply" || tool === "return") showGhost(h && ventAt(h) ? h : null, 4 * dx, 4 * dx);
+      else { const [pw, ph] = panelSize(); showGhost(h, pw, ph); }
+    };
+    const placeFire = (h: SurfHit, ignite: boolean) => {
+      const [i, j, k] = h.cell; sim.reset(); smokeP.clear(); flameP.clear(); resetWalls(); ghost.visible = false;
+      if (sim.placeSource(i, j, k, h.n) && ignite) sim.ignite();
+    };
+    const onDownTool = (e: PointerEvent) => {
+      if (live.current.tool !== "orbit" || e.button !== 0 || !panel.visible) return;
+      setNdc(e); if (ray.intersectObject(panel)[0]) { dragging = true; controls.enabled = false; }
+    };
+    const onUp = (e: PointerEvent) => {
+      const d0 = down; down = null;
+      if (dragging) { dragging = false; controls.enabled = true; setNdc(e); const h = surfaceHit(); ghost.visible = false; if (h) placeFire(h, sim.state !== "idle"); return; }
+      if (!d0 || Math.hypot(e.clientX - d0.x, e.clientY - d0.y) > 5) return;
+      setNdc(e); const tool = live.current.tool;
+      if (tool === "probe") { measureAt(); return; }
+      if (tool === "source") { const h = surfaceHit(); if (h) placeFire(h, false); return; }
+      if (tool === "supply" || tool === "return") {
+        const h = surfaceHit(); const v = h && ventAt(h); if (!v) return;
+        const where = { x0: "x = 0 wall", x1: "far x wall", y0: "floor", y1: "ceiling", z0: "z = 0 wall", z1: "far z wall" }[v.face];
+        onAddVent({ id: `added-${tool}-${Date.now() % 1000000}`, label: `${tool === "supply" ? "Supply" : "Return"} vent, ${where}`, kind: tool, face: v.face, a: v.a, b: v.b });
+      }
+    };
+    renderer.domElement.addEventListener("pointermove", onMove); renderer.domElement.addEventListener("pointerdown", onDownTool);
     renderer.domElement.addEventListener("pointerdown", onDown); renderer.domElement.addEventListener("pointerup", onUp);
 
     api.current = {
       ignite: () => { if (sim.state !== "idle") { const s = sim.source; sim.reset(); if (s) sim.placeSource(s.i, s.j, s.k, s.n); smokeP.clear(); flameP.clear(); } sim.ignite(); },
-      reset: () => { sim.reset(); smokeP.clear(); flameP.clear(); },
+      reset: () => { sim.reset(); smokeP.clear(); flameP.clear(); resetWalls(); },
       door: (id, open) => { sim.setDoor(id, open); habScene.rebuildSolids(); setDoors({ ...sim.doorOpen }); },
-      fly,
+      fly, view: setView,
     };
+
+    // ---------------- section: cuts the room's walls and furniture; the fields stay
+    const secPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), ly); let secOn = false, secScan = 0, secWas = "";
+    const applySection = () => {
+      const L = live.current; secOn = L.sec !== "off";
+      if (secOn) {
+        const k = L.sec === "x" ? 0 : L.sec === "y" ? 1 : 2, len = [lx, ly, lz][k], at = 0.02 + L.secPos * (len - 0.04);
+        const n = new THREE.Vector3(k === 0 ? -1 : 0, k === 1 ? -1 : 0, k === 2 ? -1 : 0); if (L.secFlip) n.negate();
+        secPlane.normal.copy(n); secPlane.constant = -n.getComponent(k) * at;
+      }
+      const key = `${secOn}`;
+      if (key !== secWas || performance.now() - secScan > 500) {
+        secWas = key; secScan = performance.now();
+        habScene.group.traverse((o) => { const m = (o as THREE.Mesh).material; if (!m) return; for (const mm of Array.isArray(m) ? m : [m]) { const has = !!mm.clippingPlanes?.length; if (has !== secOn) { mm.clippingPlanes = secOn ? [secPlane] : null; mm.needsUpdate = true; } } });
+      }
+    };
+
+    // ---------------- wall heating: lumped 3 mm aluminium skin on every gas/solid face (one-way)
+    const H_WALL = 15, RCE = 2700 * 900 * 0.003;
+    const wf: { c: number; Tw: number }[] = []; const wq = new THREE.Quaternion(), wp = new THREE.Vector3(), w1 = new THREE.Vector3(1, 1, 1), wz = new THREE.Vector3(0, 0, 1), wnv = new THREE.Vector3();
+    const wallMats: THREE.Matrix4[] = [];
+    const nbs: [number, number, number][] = [[-1, 0, 0], [1, 0, 0], [0, -1, 0], [0, 1, 0], [0, 0, -1], [0, 0, 1]];
+    for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const c = i + nx * (j + ny * k); if (sim.solid[c]) continue;
+      for (const [di, dj, dk] of nbs) {
+        const ii = i + di, jj = j + dj, kk = k + dk;
+        const out = ii < 0 || jj < 0 || kk < 0 || ii >= nx || jj >= ny || kk >= nz;
+        if (!out && !sim.solid[ii + nx * (jj + ny * kk)]) continue;
+        wf.push({ c, Tw: 0 });
+        wnv.set(-di, -dj, -dk); wq.setFromUnitVectors(wz, wnv);
+        wp.set(sim.centre(i) + di * dx * 0.47, sim.centre(j) + dj * dx * 0.47, sim.centre(k) + dk * dx * 0.47);
+        wallMats.push(new THREE.Matrix4().compose(wp, wq, w1));
+      }
+    }
+    const wallMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(dx * 0.98, dx * 0.98), new THREE.MeshBasicMaterial({ toneMapped: false, side: THREE.FrontSide }), Math.max(1, wf.length));
+    wallMats.forEach((_, q) => wallMesh.setMatrixAt(q, new THREE.Matrix4().makeScale(0, 0, 0)));
+    wallMesh.setColorAt(0, new THREE.Color()); wallMesh.visible = false; wallMesh.frustumCulled = false; wallMesh.renderOrder = 1; scene.add(wallMesh);
+    let wallMax = 0, wallQ = 0; const wcol = new THREE.Color(); const zeroM = new THREE.Matrix4().makeScale(0, 0, 0);
+    const stepWalls = (dt: number) => {
+      if (dt <= 0) return; const A = dx * dx; wallMax = 0; wallQ = 0;
+      for (let q = 0; q < wf.length; q++) { const f = wf[q]; const qf = H_WALL * (sim.T[f.c] - f.Tw); f.Tw += (qf * dt) / RCE; wallQ += qf * A; if (f.Tw > wallMax) wallMax = f.Tw; }
+    };
+    const paintWalls = () => {
+      const amb = sim.params.ambientC;
+      // only walls that have warmed by more than 1 K are drawn, so the room stays readable
+      for (let q = 0; q < wf.length; q++) {
+        const Tw = wf[q].Tw; wallMesh.setMatrixAt(q, Tw > 1 ? wallMats[q] : zeroM);
+        const [r, g, b] = cmap("inferno", Math.max(0.15, Math.min(1, (amb + Tw - 20) / 130))); wallMesh.setColorAt(q, wcol.setRGB(r, g, b));
+      }
+      wallMesh.instanceMatrix.needsUpdate = true; if (wallMesh.instanceColor) wallMesh.instanceColor.needsUpdate = true;
+    };
+    const resetWalls = () => { for (const f of wf) f.Tw = 0; wallMax = wallQ = 0; };
 
     // ---------------- field helpers
     const field = (f: Exclude<SliceField, "off">, c: number) => {
@@ -432,9 +586,11 @@ function Interior({ hab, entries, pickRef, pendingFocus, paramsRef, live, simRef
         case "smoke": return sim.S[c];
         case "speed": return Math.hypot(sim.uc[c], sim.vc[c], sim.wc[c]);
         case "vorticity": return sim.vort[c];
+        case "pressure": return (sim.P[c] - pMean) * pScale * 1000;
+        case "peclet": return (Math.hypot(sim.uc[c], sim.vc[c], sim.wc[c]) * dx) / (D_REF * Math.sqrt(101.325 / Math.max(10, sim.params.pressureKpa)));
       }
     };
-    let curRange: [number, number] | null = null;
+    let curRange: [number, number] | null = null; let pMean = 0, pScale = 1;
     const upload = () => {
       const Lv = live.current;
       if (Lv.volume !== "off") {
@@ -443,7 +599,14 @@ function Interior({ hab, entries, pickRef, pendingFocus, paramsRef, live, simRef
       }
       if (Lv.slice !== "off") {
         const f = FIELDS[Lv.slice]; if (Lv.slice === "vorticity") sim.computeVorticity();
-        const [lo, hi] = f.range(sim.params.o2 * 100); curRange = [lo, hi];
+        let [lo, hi] = f.range(sim.params.o2 * 100);
+        if (Lv.slice === "pressure") {
+          let sum = 0, n = 0; for (let c = 0; c < sim.n; c++) if (!sim.solid[c]) { sum += sim.P[c]; n++; } pMean = n ? sum / n : 0;
+          pScale = (1.2 * (sim.params.pressureKpa / 101.3) * (293 / (273 + sim.params.ambientC))) / 0.06;
+          let m = 1e-3; for (let c = 0; c < sim.n; c++) if (!sim.solid[c]) m = Math.max(m, Math.abs((sim.P[c] - pMean) * pScale * 1000));
+          lo = -m; hi = m;
+        }
+        curRange = [lo, hi];
         for (let c = 0, q = 0; c < sim.n; c++, q += 2) { sliceData[q] = Math.max(0, Math.min(255, ((field(Lv.slice, c) - lo) / (hi - lo)) * 255)); sliceData[q + 1] = sim.solid[c] ? 0 : 255; }
         sliceTex.needsUpdate = true; slMat.uniforms.uCmap.value = CMAP_ID[f.cmap]; slMat.uniforms.uAlphaMode.value = Lv.slice === "o2" ? 2 : 1;
       } else curRange = null;
@@ -560,45 +723,16 @@ function Interior({ hab, entries, pickRef, pendingFocus, paramsRef, live, simRef
       probeEl.style.display = "block";
       probeEl.innerHTML = `<i></i><span>|u| <b>${(s * 100).toFixed(2)} cm/s</b><br>u, v, w ${(u * 100).toFixed(1)}, ${(v * 100).toFixed(1)}, ${(w2 * 100).toFixed(1)} cm/s<br>angle from vertical ${deg.toFixed(0)}° · arrow ${(s * scale * 100).toFixed(0)} cm<br>T ${(sim.params.ambientC + sim.T[c]).toFixed(0)} °C · O₂ ${(sim.Y[c] * 100).toFixed(1)} %<br>at x ${probePos.x.toFixed(2)} y ${probePos.y.toFixed(2)} z ${probePos.z.toFixed(2)} m</span>`;
     };
-    // room tags: every enterable zone of the base, clickable from any distance
-    const tagP = new THREE.Vector3();
-    const tags = entries.map((e) => {
-      const el = document.createElement("button"); el.className = `room-tag${e.hab === hab.id ? " live" : ""}`; el.textContent = e.label; el.onclick = () => pickRef.current(e); overlay.appendChild(el);
-      return { e, el };
-    });
-    const tagPos = (e: RoomEntry, out: THREE.Vector3) => {
-      if (e.hab !== hab.id) { env.roomPos(e.room, out); out.y += 0.6 * env.k; return out; }
-      const b = (hab.zones.find((z) => z.id === e.zone) ?? hab.zones[0]).box;
-      return out.set(((b[0] - 1 + b[1]) / 2) * dx, b[3] * dx + 0.5, ((b[4] - 1 + b[5]) / 2) * dx);
-    };
-    // the fire seen from outside: a glow that shines through the hull, and a label
-    const glowCv = document.createElement("canvas"); glowCv.width = glowCv.height = 64; { const gg = glowCv.getContext("2d")!; const gr = gg.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(0.25, "rgba(255,255,255,.55)"); gr.addColorStop(1, "rgba(255,255,255,0)"); gg.fillStyle = gr; gg.fillRect(0, 0, 64, 64); }
-    const glowTex = new THREE.CanvasTexture(glowCv);
-    const beacon = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, transparent: true, toneMapped: false })); beacon.visible = false; beacon.renderOrder = 8; scene.add(beacon);
-    const fireEl = markEl("fire"); fireEl.style.display = "none";
     const pj = new THREE.Vector3();
     const place = (el: HTMLElement, p: THREE.Vector3) => { pj.copy(p).project(camera); el.style.transform = `translate(${((pj.x + 1) / 2) * mount.clientWidth}px, ${((1 - pj.y) / 2) * mount.clientHeight}px)`; if (pj.z > 1) el.style.display = "none"; };
     const drawOverlay = () => {
       const on = live.current.marks && sim.state !== "idle";
       for (const m of marksL) { m.el.style.display = on ? "block" : "none"; if (on) place(m.el, m.pos); }
       updateProbe(); if (probeEl.style.display !== "none") place(probeEl, probePos);
-      const dist = camera.position.distanceTo(controls.target), far = dist > Math.max(lx, lz) * 1.6;
-      for (const tg of tags) {
-        const own = tg.e.hab === hab.id;
-        tg.el.style.display = own && !far && hab.zones.length < 2 ? "none" : "block";
-        tagPos(tg.e, tagP).project(camera); if (tagP.z > 1) { tg.el.style.display = "none"; continue; }
-        tg.el.style.transform = `translate(${((tagP.x + 1) / 2) * mount.clientWidth}px, ${((1 - tagP.y) / 2) * mount.clientHeight}px) translate(-50%, -100%)`;
-      }
-      const burning = flameLight.intensity > 0;
-      beacon.visible = burning && far; fireEl.style.display = burning && far ? "block" : "none";
-      if (burning && far) {
-        beacon.position.copy(flameLight.position); const dC = camera.position.distanceTo(flameLight.position);
-        beacon.scale.setScalar(dC * (0.035 + 0.008 * Math.sin(performance.now() / 90))); (beacon.material as THREE.SpriteMaterial).color.copy(flameLight.color);
-        fireEl.innerHTML = `<i></i><span>fire<b>${(sim.params.ambientC + sim.maxT).toFixed(0)} °C</b></span>`; place(fireEl, flameLight.position);
-      }
-      farNow = far;
+      for (const lb of axisLabels) { pj.copy(lb.pos).project(camera); lb.el.style.display = pj.z > 1 ? "none" : "block"; lb.el.style.transform = `translate(${((pj.x + 1) / 2) * mount.clientWidth}px, ${((1 - pj.y) / 2) * mount.clientHeight}px) translate(-50%, -50%)`; }
     };
-    let farNow = true;
+    const farNow = false;
+    const axisLabels = stage.labels.map((l) => { const el = document.createElement("span"); el.className = `ax-label${l.axis ? " axis" : ""}`; el.textContent = l.text; overlay.appendChild(el); return { pos: l.pos, el }; });
     // fire-engineering readouts: smoke layer base (lowest level whose mean smoke exceeds the alarm level), smoke-filled volume, conditions at head height
     const layerStats = () => {
       const sumS = new Float64Array(ny), cnt = new Float64Array(ny); let vol = 0, gas = 0; const jh = Math.min(ny - 1, Math.floor(1.6 / dx)); let hT = 0, hO = 0, hS = 0, hn = 0;
@@ -613,7 +747,7 @@ function Interior({ hab, entries, pickRef, pendingFocus, paramsRef, live, simRef
     };
 
     // ---------------- loop
-    let raf = 0, last = performance.now(), hudT = 0, simClock = 0, wallClock = 0, envT = 0;
+    let raf = 0, last = performance.now(), hudT = 0, simClock = 0, wallClock = 0, envT = 0, wallPaint = 0, prevNow = performance.now();
     const DT = 0.06;
     const vfield = (x: number, y: number, z: number): [number, number, number] | null => sim.velocity(x, y, z);
     const blocked = (x: number, y: number, z: number) => sim.isSolidAt(x, y, z);
@@ -682,9 +816,10 @@ function Interior({ hab, entries, pickRef, pendingFocus, paramsRef, live, simRef
       }
       sim.detectors.forEach((d, q) => { const m = detMeshes[q].material as THREE.MeshStandardMaterial; m.emissive.set(d.alarmAt !== null ? (Math.floor(now / 400) % 2 ? 0xff3322 : 0x330000) : 0x000000); });
 
-      envT += dtw; env.update(dtw, envT, camera);
+      envT += dtw; applySection(); const flightLast = prevNow; prevNow = now;
+      stepWalls(simDt); wallMesh.visible = Lv.wallHeat; if (Lv.wallHeat && now - wallPaint > 200) { wallPaint = now; paintWalls(); }
       if (flight) {
-        flight.t = Math.min(1, flight.t + dtw / 1.6); const e = flight.t < 0.5 ? 4 * flight.t ** 3 : 1 - (-2 * flight.t + 2) ** 3 / 2;
+        flight.t = Math.min(1, flight.t + Math.min(0.3, (now - flightLast) / 1000) / 1.2); const e = flight.t < 0.5 ? 4 * flight.t ** 3 : 1 - (-2 * flight.t + 2) ** 3 / 2;
         camera.position.lerpVectors(flight.from.pos, flight.to.pos, e); controls.target.lerpVectors(flight.from.target, flight.to.target, e);
         if (flight.t >= 1) flight = null;
       }
@@ -695,7 +830,7 @@ function Interior({ hab, entries, pickRef, pendingFocus, paramsRef, live, simRef
         if (live.current.marks) findExtremes();
         hudT = now;
         setHud({
-          ...layerStats(), far: farNow,
+          ...layerStats(), far: farNow, wallMax, wallQ, placed: !!sim.source,
           t: s && sim.state !== "idle" ? sim.time - s.ignitedAt : 0, state: sim.state, hrr: sim.hrr, minO2: sim.minO2, maxT: sim.maxT, area: sim.burningArea, charred: sim.charredArea, dp: sim.dpPa,
           det: sim.detectors.map((d) => ({ id: d.id, label: d.label, alarmAt: d.alarmAt === null ? null : d.alarmAt - (s?.ignitedAt ?? 0), reading: d.reading })),
           div: sim.divMax, it: sim.pcgIters, cfl: (sim.maxSpeed * DT) / dx, ms: sim.stepMs, vmax: sim.maxSpeed, uref, range: curRange, sealed: sim.sealed, rate: wallClock > 0 ? simClock / wallClock : 0,
@@ -708,9 +843,9 @@ function Interior({ hab, entries, pickRef, pendingFocus, paramsRef, live, simRef
     (window as unknown as { __fa?: unknown }).__fa = { sim, api: api.current };
     return () => {
       cancelAnimationFrame(raf); ro.disconnect();
-      renderer.domElement.removeEventListener("wheel", onWheel); glowTex.dispose();
+      renderer.domElement.removeEventListener("wheel", onWheel);
       renderer.domElement.removeEventListener("pointerdown", onDown); renderer.domElement.removeEventListener("pointerup", onUp);
-      env.dispose(); overlay.remove(); habScene.dispose(); smokeP.dispose(); flameP.dispose(); pm.dispose(); controls.dispose(); composer.dispose(); renderer.dispose();
+      stage.dispose(); overlay.remove(); renderer.domElement.removeEventListener("pointermove", onMove); renderer.domElement.removeEventListener("pointerdown", onDownTool); habScene.dispose(); smokeP.dispose(); flameP.dispose(); pm.dispose(); controls.dispose(); composer.dispose(); renderer.dispose();
       mount.removeChild(renderer.domElement); simRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

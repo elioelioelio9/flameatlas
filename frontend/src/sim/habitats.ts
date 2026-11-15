@@ -60,14 +60,14 @@ const issDet = (): DetectorDef[] => [
 
 export const HABITATS: Habitat[] = [
   {
-    id: "iss", world: "iss", room: "main", fit: "main", name: "ISS — Node 1, US Lab, Node 2", short: "ISS", place: "Low Earth orbit",
+    id: "iss", world: "iss", room: "main", fit: "main", name: "ISS — Node 1, US Lab, Node 2", short: "ISS · Node 1, Lab, Node 2", place: "Low Earth orbit",
     dx: 0.16, nx: ISS_NX, ny: ISS_N, nz: ISS_N, gravity: 0,
     zones: issZones, solids: [b1, b2], doors: [h1, h2], vents: issVents, detectors: issDet(),
     ignition: { i: 45, j: 1, k: 4, n: [0, 1, 0] }, walls: "racks", backdrop: "orbit",
     note: "2.08 m square aisles lined with racks; cabin air enters in Node 1 and leaves through Node 2.",
   },
   {
-    id: "moon", world: "moon", room: "main", fit: "main", name: "Moon base — surface habitat", short: "Moon base", place: "Taurus-Littrow backdrop (Apollo 17)",
+    id: "moon", world: "moon", room: "main", fit: "main", name: "Moon base — surface habitat", short: "Surface habitat", place: "Taurus-Littrow backdrop (Apollo 17)",
     dx: 0.16, nx: 62, ny: 15, nz: 20, gravity: 1.62,
     zones: [
       { id: "lab", name: "Laboratory", box: [1, 35, 1, 15, 1, 20] },
@@ -103,7 +103,7 @@ export const HABITATS: Habitat[] = [
     note: "A rigid surface module, 10 m × 3.2 m, 2.4 m headroom: lab, crew quarters and airlock. 1/6 g buoyancy.",
   },
   {
-    id: "mars", world: "mars", room: "main", fit: "main", name: "Mars habitat — two decks", short: "Mars habitat", place: "Gale crater backdrop (Curiosity)",
+    id: "mars", world: "mars", room: "main", fit: "main", name: "Mars habitat — two decks", short: "Two-deck habitat", place: "Gale crater backdrop (Curiosity)",
     dx: 0.2, nx: 30, ny: 24, nz: 30, gravity: 3.71,
     cylinder: { axis: "y", cx: 15.5, cz: 15.5, r: 14.6 },
     zones: [
@@ -131,7 +131,7 @@ export const HABITATS: Habitat[] = [
     note: "A 6 m diameter, two-deck habitat linked by a floor hatch. At 0.38 g hot smoke climbs to the upper deck.",
   },
   {
-    id: "earth", world: "earth", room: "main", fit: "main", name: "Earth — crew capsule on the pad", short: "Earth", place: "Launch pad, 1 g",
+    id: "earth", world: "earth", room: "main", fit: "main", name: "Earth — crew capsule on the pad", short: "Crew capsule", place: "Launch pad, 1 g",
     dx: 0.16, nx: 32, ny: 21, nz: 32, gravity: 9.81,
     cylinder: { axis: "y", cx: 16.5, cz: 16.5, r: 15.6, rTop: 7.5 },
     zones: [
@@ -207,19 +207,6 @@ HABITATS.push(
     ],
     ignition: { i: 16, j: 5, k: 4, n: [0, 0, 1] },
     note: "A 7 m stowage module packed with soft cargo bags: the largest fuel load of the base.",
-  }),
-  domeRoom({ id: "moon-greenhouse", world: "moon", room: "greenhouse", name: "Moon base — greenhouse dome", short: "Greenhouse", dx: 0.16, n: 32, ny: 14, gravity: 1.62, backdrop: "moon",
-    note: "A 5 m dome with four plant beds. Plants raise local oxygen and humidity; dry biomass is fuel." }),
-  moduleRoom({
-    id: "mars-lab", world: "mars", room: "lab", name: "Mars outpost — science module", short: "Science module", zone: "Science laboratory",
-    dx: 0.2, nx: 37, ny: 11, nz: 12, gravity: 3.71, backdrop: "mars",
-    solids: [
-      { id: "bench-a", label: "Sample bench", box: [4, 22, 1, 4, 1, 3], kind: "bench" },
-      { id: "racks", label: "Instrument racks", box: [10, 33, 1, 9, 11, 12], kind: "rack" },
-      { id: "glove", label: "Glovebox", box: [26, 32, 1, 6, 1, 3], kind: "locker" },
-    ],
-    ignition: { i: 12, j: 5, k: 2, n: [0, 1, 0] },
-    note: "A 7.4 m laboratory module linked to the central habitat by a tunnel.",
   }),
   domeRoom({ id: "mars-greenhouse", world: "mars", room: "greenhouse", name: "Mars outpost — greenhouse dome", short: "Greenhouse", dx: 0.2, n: 34, ny: 14, gravity: 3.71, backdrop: "mars",
     note: "A 7 m dome with four plant beds, at 0.38 g." }),
