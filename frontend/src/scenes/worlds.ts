@@ -233,8 +233,8 @@ function mars(d: Detail, bare = false): WorldScene {
 let issCache: Promise<THREE.Object3D> | null = null;
 export function loadISS(): Promise<THREE.Object3D> {
   issCache ??= new Promise((resolve, reject) => {
-    const draco = new DRACOLoader().setDecoderPath("/assets/draco/");
-    new GLTFLoader().setDRACOLoader(draco).load("/assets/models/iss.glb", (gltf) => {
+    const draco = new DRACOLoader().setDecoderPath((import.meta.env.BASE_URL + "assets/draco/"));
+    new GLTFLoader().setDRACOLoader(draco).load((import.meta.env.BASE_URL + "assets/models/iss.glb"), (gltf) => {
       const m = gltf.scene;
       const box = new THREE.Box3().setFromObject(m), size = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
       const s = 1 / Math.max(size.x, size.y, size.z);

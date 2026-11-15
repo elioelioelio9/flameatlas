@@ -9,13 +9,13 @@ type BodyId = "iss" | "earth" | "moon" | "mars";
 
 interface BodyInfo { id: BodyId; name: string; sub: string; gravity: string; atmosphere: string; preset: string; presetLabel: string }
 const SIM: Record<BodyId, { photo: string; credit: string; habitat: string; scenarios: { id: string; label: string; text: string }[] }> = {
-  iss: { photo: "/assets/photos/nasa_iss042e021318.jpg", credit: "Destiny at night · NASA ISS042-E-021318", habitat: "Node 1, the US Lab and Node 2: three modules joined by hatches, swept by cabin air.",
+  iss: { photo: (import.meta.env.BASE_URL + "assets/photos/nasa_iss042e021318.jpg"), credit: "Destiny at night · NASA ISS042-E-021318", habitat: "Node 1, the US Lab and Node 2: three modules joined by hatches, swept by cabin air.",
     scenarios: [{ id: "iss", label: "Ventilation on", text: "Today's station: the airflow feeds the flame and carries smoke downstream." }, { id: "ventoff", label: "Fans shut down", text: "The standard response: does the flame starve in still air?" }, { id: "explo", label: "34 % O₂ exploration cabin", text: "Oxygen-rich, low-pressure air planned for future vehicles." }] },
-  moon: { photo: "/assets/photos/nasa_jsc2004e20304.jpg", credit: "Taurus-Littrow, Apollo 17 · NASA JSC2004E20304", habitat: "A 10 m surface module — laboratory, crew quarters, airlock — at 1/6 g in oxygen-rich air.",
+  moon: { photo: (import.meta.env.BASE_URL + "assets/photos/nasa_jsc2004e20304.jpg"), credit: "Taurus-Littrow, Apollo 17 · NASA JSC2004E20304", habitat: "A 10 m surface module — laboratory, crew quarters, airlock — at 1/6 g in oxygen-rich air.",
     scenarios: [{ id: "moon", label: "Fire in the crew quarters", text: "Cotton in a sleep station; does the smoke reach the lab detector in time?" }, { id: "moon-off", label: "Fans off", text: "Weak buoyancy alone: does the flame survive?" }] },
-  mars: { photo: "/assets/photos/nasa_PIA25176.jpg", credit: "Gale crater, Curiosity Mastcam · NASA/JPL-Caltech/MSSS PIA25176", habitat: "A two-deck, 6 m habitat. At 0.38 g, does smoke climb through the deck hatch?",
+  mars: { photo: (import.meta.env.BASE_URL + "assets/photos/nasa_PIA25176.jpg"), credit: "Gale crater, Curiosity Mastcam · NASA/JPL-Caltech/MSSS PIA25176", habitat: "A two-deck, 6 m habitat. At 0.38 g, does smoke climb through the deck hatch?",
     scenarios: [{ id: "mars", label: "Fire on the lab bench", text: "Lower-deck fire, crew sleeping upstairs." }, { id: "mars-off", label: "Fans off", text: "Does smoke still climb through the deck hatch at 0.38 g?" }] },
-  earth: { photo: "/assets/photos/nasa_jsc2013e028042.jpg", credit: "Space Vehicle Mockup Facility · NASA JSC2013E028042", habitat: "A crew capsule on the launch pad, at 1 g: the reference every Earth standard is written for.",
+  earth: { photo: (import.meta.env.BASE_URL + "assets/photos/nasa_jsc2013e028042.jpg"), credit: "Space Vehicle Mockup Facility · NASA JSC2013E028042", habitat: "A crew capsule on the launch pad, at 1 g: the reference every Earth standard is written for.",
     scenarios: [{ id: "earth", label: "Fire in the capsule, cabin air", text: "Buoyant plume: the ceiling detector goes first." }, { id: "apollo1", label: "100 % oxygen at 115 kPa", text: "The Apollo 1 atmosphere, on the pad in 1967." }, { id: "liftoff", label: "During liftoff, 3 g", text: "Stronger buoyancy, faster plume." }] },
 };
 const BODIES: BodyInfo[] = [
@@ -26,12 +26,12 @@ const BODIES: BodyInfo[] = [
 ];
 
 const PHOTOS = {
-  candle: { src: "/assets/photos/nasa_GRC-1998-C-00485_crop.jpg", id: "GRC-1998-C-00485", cap: "The same candle in normal gravity (left) and in microgravity (right).", who: "NASA Glenn Research Center" },
-  bass: { src: "/assets/photos/nasa_iss035e016429.jpg", id: "ISS035-E-16429", cap: "Chris Cassidy runs a BASS flame test in the Microgravity Science Glovebox, 9 April 2013.", who: "NASA / Expedition 35", acr: "BASS" },
-  bass2: { src: "/assets/photos/nasa_iss040e072900.jpg", id: "ISS040-E-072900", cap: "BASS-II: a 4 mm acrylic slab burning in a controlled airflow, July 2014.", who: "NASA / Expedition 40", acr: "BASS-II" },
-  saffire: { src: "/assets/photos/nasa_jsc2023e046631.jpg", id: "JSC2023E046631", cap: "Saffire-IV: plexiglass burning inside a Cygnus cargo vehicle after it left the station.", who: "NASA", acr: "SAFFIRE" },
-  acme: { src: "/assets/photos/nasa_GRC-2016-C-05051.jpg", id: "GRC-2016-C-05051", cap: "Inspecting the ACME gas-jet burner insert before flight, Glenn Research Center.", who: "NASA", acr: "ACME" },
-  destiny: { src: "/assets/photos/nasa_iss042e021318.jpg", id: "ISS042-E-021318", cap: "Destiny, the US Laboratory, at night with the main lights off. 3 December 2014.", who: "NASA / Expedition 42" },
+  candle: { src: (import.meta.env.BASE_URL + "assets/photos/nasa_GRC-1998-C-00485_crop.jpg"), id: "GRC-1998-C-00485", cap: "The same candle in normal gravity (left) and in microgravity (right).", who: "NASA Glenn Research Center" },
+  bass: { src: (import.meta.env.BASE_URL + "assets/photos/nasa_iss035e016429.jpg"), id: "ISS035-E-16429", cap: "Chris Cassidy runs a BASS flame test in the Microgravity Science Glovebox, 9 April 2013.", who: "NASA / Expedition 35", acr: "BASS" },
+  bass2: { src: (import.meta.env.BASE_URL + "assets/photos/nasa_iss040e072900.jpg"), id: "ISS040-E-072900", cap: "BASS-II: a 4 mm acrylic slab burning in a controlled airflow, July 2014.", who: "NASA / Expedition 40", acr: "BASS-II" },
+  saffire: { src: (import.meta.env.BASE_URL + "assets/photos/nasa_jsc2023e046631.jpg"), id: "JSC2023E046631", cap: "Saffire-IV: plexiglass burning inside a Cygnus cargo vehicle after it left the station.", who: "NASA", acr: "SAFFIRE" },
+  acme: { src: (import.meta.env.BASE_URL + "assets/photos/nasa_GRC-2016-C-05051.jpg"), id: "GRC-2016-C-05051", cap: "Inspecting the ACME gas-jet burner insert before flight, Glenn Research Center.", who: "NASA", acr: "ACME" },
+  destiny: { src: (import.meta.env.BASE_URL + "assets/photos/nasa_iss042e021318.jpg"), id: "ISS042-E-021318", cap: "Destiny, the US Laboratory, at night with the main lights off. 3 December 2014.", who: "NASA / Expedition 42" },
 };
 
 function hardwareGroup(inv: Investigation): string {
@@ -83,7 +83,7 @@ export default function MissionControl() {
           <p>Open a base, zoom from the outside into a room, choose the material and the air, and ignite. The flow, the smoke and the oxygen are computed live with the gravity of that world.</p>
         </header>
         <figure className="ph tool-shot">
-          <img src="/assets/photos/firelab_tool.png" alt="Fire Lab: the Moon habitat 15 s after a cotton panel ignites, with streamlines, velocity vectors, a vorticity plane and the smoke layer under the ceiling." loading="lazy" />
+          <img src={import.meta.env.BASE_URL + "assets/photos/firelab_tool.png"} alt="Fire Lab: the Moon habitat 15 s after a cotton panel ignites, with streamlines, velocity vectors, a vorticity plane and the smoke layer under the ceiling." loading="lazy" />
           <figcaption><span>The simulation: a cotton panel burning in the Moon habitat at 1/6 g, 15 s after ignition. Streamlines and arrows show the air, the colour plane its rotation, the dark cloud the smoke collecting under the ceiling.</span><span className="mono meta">Fire Lab screenshot</span></figcaption>
         </figure>
         <div className="bases-grid">

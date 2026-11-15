@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as d3 from "d3";
 import { api } from "../api";
+import { IS_STATIC } from "../staticApi";
 import { MiniMarkdown } from "../components/ui";
 import { useApp, type FireSetup } from "../state";
 import type { CoverageResponse, Insight, RankResponse } from "../types";
@@ -41,9 +42,9 @@ const REL: Record<string, string> = {
 };
 const NEED: Record<string, string> = { materials: "Materials & flame spread", extinction: "Extinction & suppression", detection: "Smoke detection" };
 const NEED_PHOTO: Record<string, { src: string; cap: string; who: string }> = {
-  extinction: { src: "/assets/photos/nasa_iss040e086481.jpg", cap: "BASS-II, August 2014: a flame test at reduced oxygen, run to find where the flame goes out.", who: "NASA / Expedition 40 · ISS040-E-086481" },
-  materials: { src: "/assets/photos/nasa_iss035e016429.jpg", cap: "Chris Cassidy burns material samples for BASS in the Microgravity Science Glovebox, April 2013.", who: "NASA / Expedition 35 · ISS035-E-16429" },
-  detection: { src: "/assets/photos/nasa_iss042e021318.jpg", cap: "The Destiny laboratory at night, lights off: the volume a smoke detector has to watch.", who: "NASA / Expedition 42 · ISS042-E-021318" },
+  extinction: { src: (import.meta.env.BASE_URL + "assets/photos/nasa_iss040e086481.jpg"), cap: "BASS-II, August 2014: a flame test at reduced oxygen, run to find where the flame goes out.", who: "NASA / Expedition 40 · ISS040-E-086481" },
+  materials: { src: (import.meta.env.BASE_URL + "assets/photos/nasa_iss035e016429.jpg"), cap: "Chris Cassidy burns material samples for BASS in the Microgravity Science Glovebox, April 2013.", who: "NASA / Expedition 35 · ISS035-E-16429" },
+  detection: { src: (import.meta.env.BASE_URL + "assets/photos/nasa_iss042e021318.jpg"), cap: "The Destiny laboratory at night, lights off: the volume a smoke detector has to watch.", who: "NASA / Expedition 42 · ISS042-E-021318" },
 };
 const NEED_TEXT: Record<string, string> = {
   extinction: "A flame dies when it gets too little oxygen, too little flow, or loses heat faster than it makes it. In orbit the flow is the fans, so turning them off is itself a suppression tool, but a slow breeze can also keep a weak flame alive.",
@@ -385,7 +386,7 @@ export default function Evidence() {
             </button>
           ))}
           <p className="mono">drag a bead · scroll to zoom · click to read</p>
-          <button className="add" onClick={() => fileRef.current?.click()}>+ Add your own documents</button>
+          {!IS_STATIC && <button className="add" onClick={() => fileRef.current?.click()}>+ Add your own documents</button>}
           <input ref={fileRef} type="file" multiple hidden accept=".pdf,.txt,.md,.csv,.json" onChange={(e) => { upload(e.target.files); e.target.value = ""; }} />
         </div>
         {toast && <div className="ev-toast mono">{toast}</div>}
@@ -435,6 +436,7 @@ export default function Evidence() {
               <>
                 <p className="kind"><i style={{ background: "#fff" }} />Answer · every line is quoted from a source</p>
                 <h2>{res.query}</h2>
+                {res.warnings?.length > 0 && <p className="ev-note">{res.warnings.join(" ")}</p>}
                 {setup && (
                   <div className="ev-sim">
                     <h3>Run this case in the simulation</h3>

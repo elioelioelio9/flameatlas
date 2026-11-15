@@ -373,7 +373,7 @@ export function buildBackdrop(hab: Habitat, scene: THREE.Scene, sim: CabinFire):
   const loadTex = (url: string) => { const t = loader.load(url); t.colorSpace = THREE.SRGBColorSpace; return t; };
   if (hab.backdrop === "moon" || hab.backdrop === "mars") {
     const isMoon = hab.backdrop === "moon";
-    const t = loadTex(isMoon ? "/assets/photos/nasa_jsc2004e20304.jpg" : "/assets/photos/pano_mars.webp");
+    const t = loadTex(isMoon ? (import.meta.env.BASE_URL + "assets/photos/nasa_jsc2004e20304.jpg") : (import.meta.env.BASE_URL + "assets/photos/pano_mars.webp"));
     t.wrapS = THREE.RepeatWrapping;
     const R = 70, H = isMoon ? (2 * Math.PI * R * 485) / 4096 : (2 * Math.PI * R * 810) / 2916;
     const pano = new THREE.Mesh(new THREE.CylinderGeometry(R, R, H, 96, 1, true), new THREE.MeshBasicMaterial({ map: t, side: THREE.BackSide, transparent: !isMoon, depthWrite: false, toneMapped: false }));
@@ -386,7 +386,7 @@ export function buildBackdrop(hab: Habitat, scene: THREE.Scene, sim: CabinFire):
   } else if (hab.backdrop === "earth") {
     scene.background = new THREE.Color(0x0e1116);
   } else {
-    const t = loadTex("/assets/photos/nasa_iss040e080833.jpg");
+    const t = loadTex((import.meta.env.BASE_URL + "assets/photos/nasa_iss040e080833.jpg"));
     scene.background = t;
     scene.backgroundIntensity = hab.backdrop === "orbit" ? 0.42 : 0.3;
     scene.backgroundBlurriness = 0;

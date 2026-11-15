@@ -1,5 +1,8 @@
 # Fire Lab
 
+
+**Live site (no install):** https://elioelioelio9.github.io/flameatlas/ — a server-less build: fixed answers are pre-exported (`scripts/export_static.py`), filtering and the data export run in the browser, and a typed question is matched to the closest of ~55 prepared questions. To update it after a change: `publish_site.command`.
+
 **Fire-safety evidence from NASA microgravity combustion data.**
 NASA Space Apps Challenge 2026 — *Flame in Freefall: SI-powered fire safety insights from microgravity combustion data.*
 
