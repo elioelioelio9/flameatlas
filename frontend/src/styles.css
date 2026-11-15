@@ -904,3 +904,8 @@ canvas.profile { width: 100%; height: auto; display: block; }
 .fly-lib button:hover { border-color: var(--rule-strong); }
 .fly-lib button[aria-pressed="true"] { border-color: var(--ice); }
 .dm-check { max-width: 1280px; margin: 0 0 72px; } .dm-check h2 { margin: 0 0 18px; } .dm-check td:first-child { color: var(--titanium); width: 42%; }
+
+/* AI answer in the Evidence panel */
+.ev-ai { margin: 4px 0 18px; padding: 14px 16px; border: 1px solid var(--rule-strong); border-radius: 10px; background: rgba(240,240,237,.03); font-size: var(--step--1); line-height: 1.6; }
+.ev-ai .kind { color: var(--steel); font-size: 0.68rem; margin: 0 0 8px; }
+.ev-ai p { margin: 0 0 8px; } .ev-ai ul { margin: 4px 0 10px; padding-left: 18px; }

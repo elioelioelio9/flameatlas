@@ -111,6 +111,24 @@ def main(out_dir: str) -> None:
     from flameatlas.knowledge import obsidian
     (out / "Fire-Lab-vault.zip").write_bytes(obsidian.export_zip(conn))
 
+    # ---- knowledge base for in-browser retrieval (the answer itself is written by the AI relay, see ai-relay/)
+    from flameatlas.knowledge.ontology import CONCEPTS, ENTITIES
+    from flameatlas.services.query_parser import fold
+    nodes = {}
+    for r in conn.execute("SELECT id, type, label, description, props FROM kg_node WHERE type IN ('document','research','concept','entity','data')"):
+        p = json.loads(r["props"] or "{}")
+        nodes[r["id"]] = {"type": r["type"], "label": r["label"], "description": r["description"],
+                          "limitation": p.get("limitation"), "evidence_kind": p.get("evidence_kind"), "acronym": p.get("acronym")}
+    edges = [dict(r) for r in conn.execute(
+        "SELECT id, src, dst, rel FROM kg_edge WHERE (src LIKE 'doc:%' AND (dst LIKE 'concept:%' OR dst LIKE 'entity:%' OR dst LIKE 'research:%' OR dst LIKE 'data:%'))"
+        " OR (src LIKE 'research:%' AND dst LIKE 'concept:%') OR (src LIKE 'data:%' AND dst LIKE 'doc:%')")]
+    put("/api/_kb", {
+        "chunks": [dict(r) for r in conn.execute("SELECT id, accession, section, text FROM chunk")],
+        "concepts": {k: [fold(a).strip() for a in v["aliases"]] for k, v in CONCEPTS.items()},
+        "entities": {k: [fold(a).strip() for a in v["aliases"]] for k, v in ENTITIES.items()},
+        "nodes": nodes, "edges": edges,
+    })
+
     # ---- table for client-side extraction / variables / scatter
     req = export_svc.ExtractRequest(accessions=[], record_types=["test", "session", "test_matrix"])
     full = export_svc.extract(repo, req)

@@ -17,7 +17,7 @@ type NodeType = "document" | "concept" | "entity" | "data" | "research" | "query
 interface KNode { id: string; type: NodeType; label: string; description?: string; props: Record<string, any>; degree: number; x?: number; y?: number; vx?: number; vy?: number; fx?: number | null; fy?: number | null }
 interface KEdge { id: string; src: string; dst: string; rel: string; basis: string; weight: number; n_evidence: number; quote?: string | null; source?: KNode; target?: KNode }
 interface Research {
-  id: string; query: string; answer: string; mode: string; warnings: string[];
+  id: string; query: string; answer: string; mode: string; model?: string | null; warnings: string[];
   sources: { id: string; kind: string; node: string | null; title: string; text: string; used: boolean }[];
   path: { nodes: { id: string; used?: boolean }[]; edges: { src: string; dst: string; rel: string; used: boolean }[] };
 }
@@ -100,7 +100,7 @@ function RankBars({ rank, onOpen, onHover }: { rank: RankResponse; onOpen: (acc:
           <span className="w">{r.why[0]}</span>
         </button>
       ))}
-      <p className="ev-note">The cursor sits at the score, out of 100. Score = {wt("relevance", 0.5)} × how well the investigation matches the question + {wt("fit", 0.3)} × how close its tests are to the gravity, oxygen and pressure asked + {wt("data", 0.2)} × how much test data it holds. The three parts are listed under each cursor. Click a line to open the data.</p>
+      {(rank as any).web ? <p className="ev-note">The cursor sits at the score, out of 100: how strongly the investigation's NASA text matches the question (BM25 over its passages). Click one to open its data.</p> : <p className="ev-note">The cursor sits at the score, out of 100. Score = {wt("relevance", 0.5)} × how well the investigation matches the question + {wt("fit", 0.3)} × how close its tests are to the gravity, oxygen and pressure asked + {wt("data", 0.2)} × how much test data it holds. The three parts are listed under each cursor. Click a line to open the data.</p>}
     </div>
   );
 }
@@ -437,6 +437,7 @@ export default function Evidence() {
                 <p className="kind"><i style={{ background: "#fff" }} />Answer · every line is quoted from a source</p>
                 <h2>{res.query}</h2>
                 {res.warnings?.length > 0 && <p className="ev-note">{res.warnings.join(" ")}</p>}
+                {res.mode === "llm" && <div className="ev-ai"><p className="kind mono">Claude · answer written from the sources below</p><MiniMarkdown text={res.answer} /></div>}
                 {setup && (
                   <div className="ev-sim">
                     <h3>Run this case in the simulation</h3>
@@ -458,8 +459,8 @@ export default function Evidence() {
                     </li>
                   ))}
                 </ol>
-                <details className="ev-full"><summary>Full answer text</summary><MiniMarkdown text={res.answer} /></details>
-                <p className="ev-note">{res.mode === "extractive" ? "Extractive answer: passages and numbers are quoted from NASA PSI records, not generated." : "Generated from the quoted sources."} The lit beads are the sources used; hover a line to find it in the graph.</p>
+                {res.mode !== "llm" && <details className="ev-full"><summary>Full answer text</summary><MiniMarkdown text={res.answer} /></details>}
+                <p className="ev-note">{res.mode === "llm" ? `Written by Claude${res.model ? ` (${res.model})` : ""} from the numbered NASA passages only; every claim cites one [S#], and unknown citations are removed.` : res.mode === "extractive" ? "Extractive answer: passages and numbers are quoted from NASA PSI records, not generated." : "Generated from the quoted sources."} The lit beads are the sources used; hover a line to find it in the graph.</p>
               </>
             )}
           </aside>

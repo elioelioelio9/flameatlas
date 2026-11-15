@@ -35,6 +35,82 @@ async function closest(q: string): Promise<{ q: string; file: string; exact: boo
   return { ...best, exact: false };
 }
 
+// ------------------------------------------------------------------ AI answers (any question) through the relay in ai-relay/
+// The relay holds the Claude key; the browser only finds the sources (same rules as knowledge/research.py) and sends them.
+const foldS = (t: string) => t.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const STOPWORDS = new Set("the a an of in on at to for and or is are was were be been does do did what which how why when who whom with without from by about into than then this that these those there their its it as can could would should will much many any some not no yes we you they he she i me my our your le la les des un une du de et ou est sont que qui quoi quel quelle quels quelles comment pourquoi pour avec sans sur dans par pas plus".split(" "));
+let kbP: Promise<any> | null = null;
+const kb = () => (kbP ??= load(key("/api/_kb")).then((k) => {
+  const docs = k.chunks.map((c: any) => { const toks = foldS(c.text + " " + c.section).match(/[a-z0-9]{3,}/g) ?? []; const tf = new Map<string, number>(); toks.forEach((t: string) => tf.set(t, (tf.get(t) ?? 0) + 1)); return { c, tf, len: toks.length }; });
+  const df = new Map<string, number>(); docs.forEach((d: any) => d.tf.forEach((_: number, t: string) => df.set(t, (df.get(t) ?? 0) + 1)));
+  const avg = docs.reduce((a: number, d: any) => a + d.len, 0) / Math.max(1, docs.length);
+  const rx = (al: string[]) => al.map((a) => new RegExp(`(?<![a-z0-9])${esc(a)}(?:s|es)?(?![a-z0-9])`));
+  const terms = (tab: Record<string, string[]>) => Object.fromEntries(Object.entries(tab).map(([id, al]) => [id, rx(al)]));
+  return { ...k, docs, df, avg, crx: terms(k.concepts), erx: terms(k.entities) };
+}));
+let aiP: Promise<string | null> | null = null;
+const aiEndpoint = () => (aiP ??= realFetch(`${import.meta.env.BASE_URL}ai.json`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : {})).then((j: any) => j.endpoint || null).catch(() => null));
+
+async function aiResearch(q: string, endpoint: string) {
+  const K = await kb(); const f = foldS(q);
+  const find = (tab: Record<string, RegExp[]>) => Object.fromEntries(Object.entries(tab).flatMap(([id, rs]) => { for (const r of rs) { const m = f.match(r); if (m) return [[id, m[0]]]; } return []; }));
+  const concepts: Record<string, string> = find(K.crx), entities: Record<string, string> = find(K.erx);
+  // BM25 over the passages: words of the question, plus the aliases of the concepts it names (half weight)
+  const qt = new Map<string, number>();
+  (f.match(/[a-z0-9]{3,}/g) ?? []).filter((t) => !STOPWORDS.has(t)).forEach((t) => qt.set(t, 1));
+  Object.keys(concepts).forEach((c) => K.concepts[c].forEach((a: string) => (a.match(/[a-z0-9]{3,}/g) ?? []).forEach((t) => { if (!qt.has(t)) qt.set(t, 0.5); })));
+  const N = K.docs.length;
+  const scored = K.docs.map((d: any) => { let sc = 0; qt.forEach((w, t) => { const n = d.tf.get(t); if (!n) return; const idf = Math.log(1 + (N - K.df.get(t) + 0.5) / (K.df.get(t) + 0.5)); sc += w * idf * (n * 2.2) / (n + 1.2 * (0.25 + 0.75 * d.len / K.avg)); }); return { c: d.c, sc }; })
+    .filter((x: any) => x.sc > 0).sort((a: any, b: any) => b.sc - a.sc);
+  const picked: any[] = []; const per = new Map<string, number>();
+  for (const x of scored) { if ((per.get(x.c.accession) ?? 0) >= 2) continue; picked.push(x); per.set(x.c.accession, (per.get(x.c.accession) ?? 0) + 1); if (picked.length >= 9) break; }
+  const label = (id: string) => K.nodes[id]?.label ?? id;
+  const sources: any[] = []; const add = (kind: string, node: string | null, title: string, text: string, extra: object = {}) => { sources.push({ id: `S${sources.length + 1}`, kind, node, title, text, ...extra }); };
+  for (const x of picked) add("passage", `doc:${x.c.accession}`, `${label("doc:" + x.c.accession)} — ${x.c.section}`, x.c.text, { chunk_id: x.c.id, section: x.c.section, score: +x.sc.toFixed(3) });
+  const docsUsed = [...new Set(picked.map((x) => x.c.accession))];
+  const found = new Set<string>();
+  K.edges.forEach((e: any) => { if (e.rel === "supports" && e.dst.startsWith("research:") && docsUsed.includes(e.src.slice(4))) found.add(e.dst); if (e.rel === "mentions" && e.src.startsWith("research:") && concepts[e.dst.slice(8)] !== undefined) found.add(e.src); });
+  [...found].slice(0, 4).forEach((rid) => { const n = K.nodes[rid]; if (n) add("finding", rid, n.label, `${n.description ?? ""} Limitation: ${n.limitation ?? "n/a"}`, { evidence_kind: n.evidence_kind }); });
+  // evidence path for the graph
+  const pn = new Map<string, any>([["query", { id: "query", type: "query", label: q }]]); const pe: any[] = [];
+  Object.keys(concepts).forEach((c) => { pn.set(`concept:${c}`, { id: `concept:${c}`, role: "concept" }); pe.push({ src: "query", dst: `concept:${c}`, rel: "asks_about", used: true }); });
+  Object.keys(entities).forEach((e) => { pn.set(`entity:${e}`, { id: `entity:${e}`, role: "entity" }); pe.push({ src: "query", dst: `entity:${e}`, rel: "asks_about", used: true }); });
+  sources.forEach((s) => { if (s.node && !pn.has(s.node)) pn.set(s.node, { id: s.node, role: s.kind }); });
+  const anchors = [...pn.keys()].filter((k) => /^(concept|entity):/.test(k)), used = [...pn.keys()].filter((k) => k.startsWith("doc:"));
+  K.edges.forEach((e: any) => { if (used.includes(e.src) && (anchors.includes(e.dst) || (pn.has(e.dst) && /^(research|data):/.test(e.dst)))) pe.push({ id: e.id, src: e.src, dst: e.dst, rel: e.rel, used: true }); });
+  const related: string[] = [];
+  anchors.slice(0, 6).forEach((a) => K.edges.filter((e: any) => e.dst === a && e.src.startsWith("doc:")).slice(0, 12).forEach((e: any) => { if (!pn.has(e.src)) { related.push(e.src); pn.set(e.src, { id: e.src, role: "related" }); pe.push({ id: e.id, src: e.src, dst: a, rel: e.rel, used: false }); } }));
+  pn.forEach((v, k) => { if (k !== "query" && K.nodes[k]) Object.assign(v, { type: K.nodes[k].type, label: K.nodes[k].label }); });
+  const warnings: string[] = [];
+  if (entities.moon !== undefined || entities.mars !== undefined) warnings.push("Partial gravity: the PSI corpus holds microgravity and 1-g data only — values are bounds, not lunar or martian measurements.");
+  // the answer
+  let answer = "The documents in the knowledge base do not provide a reliable answer to this question.", mode = "no_evidence", model: string | null = null;
+  if (sources.length) {
+    const r = await realFetch(endpoint, { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ question: q, sources: sources.map((s) => ({ id: s.id, kind: s.kind, title: s.title, text: String(s.text).slice(0, 1500) })) }) });
+    const out = await r.json().catch(() => ({}));
+    if (!r.ok || !out.text) throw new Error(out.error ?? `AI relay ${r.status}`);
+    let text: string = out.text; const valid = new Set(sources.map((s) => s.id)); const cited = new Set([...text.matchAll(/\[(S\d+)\]/g)].map((m) => m[1]));
+    cited.forEach((c) => { if (!valid.has(c)) { text = text.split(`[${c}]`).join(""); warnings.push(`Removed an unknown citation ${c}.`); } });
+    if (![...cited].some((c) => valid.has(c))) throw new Error("answer without a valid citation");
+    answer = text; mode = "llm"; model = out.model ?? null;
+  }
+  const usedIds = new Set([...answer.matchAll(/\[(S\d+)\]/g)].map((m) => m[1]));
+  sources.forEach((s) => (s.used = usedIds.has(s.id)));
+  pn.forEach((v) => (v.used = v.id === "query" || sources.some((s) => s.node === v.id && s.used) || ["concept", "entity"].includes(v.role)));
+  // ranking for the side panel: investigations by retrieval score
+  const byAcc = new Map<string, { s: number; sec: string }>(); scored.slice(0, 60).forEach((x: any) => { const b = byAcc.get(x.c.accession); if (!b) byAcc.set(x.c.accession, { s: x.sc, sec: x.c.section }); else b.s += x.sc * 0.3; });
+  const top = [...byAcc.entries()].sort((a, b) => b[1].s - a[1].s).slice(0, 8); const mx = top[0]?.[1].s || 1;
+  const num = (re: RegExp) => { const m = f.match(re); return m ? Number(m[1].replace(",", ".")) : null; };
+  const scenario = { query: q, include_ground_studies: true, habitat: null, gravity: null, need: null, fuel_phase: null,
+    o2_pct: num(/(\d{1,2}(?:[.,]\d+)?)\s?%\s*(?:o2|o₂|oxyg|d'oxyg|of oxygen)?/), pressure_kpa: num(/(\d{1,3}(?:[.,]\d+)?)\s?kpa/), flow_cm_s: num(/(\d{1,3}(?:[.,]\d+)?)\s?cm\/s/) };
+  const rankRes = { web: true, scenario, parsed: null, weights: {}, status_scores: {}, results: top.map(([acc, v]) => ({ accession: acc, acronym: K.nodes[`doc:${acc}`]?.acronym ?? label(`doc:${acc}`).split(" — ")[0], score: Math.min(0.97, 0.35 + 0.62 * v.s / mx), why: [`Its “${v.sec}” matches the question.`] })), notes: [] };
+  return { research: { id: "R-web", query: q, created: Date.now() / 1000, answer, mode, model, warnings, understood: { concepts, entities, values: [], parsed: {} },
+    sources, path: { nodes: [...pn.values()], edges: pe }, related_documents: related.slice(0, 20) }, rank: rankRes };
+}
+const aiCache = new Map<string, Promise<any>>();
+
 // ------------------------------------------------------------------ table (extraction, variables, scatter)
 interface Table { base_columns: string[]; quantity_columns: string[]; rows: unknown[][]; in_scope: string[]; test_vars: Record<string, { col: string; scale: number; unit: string }>; dictionary: any[]; variables: any[]; sources: Record<string, any>; limitations: string; version: string }
 let rowsCache: { t: Table; rows: Record<string, any>[] } | null = null;
@@ -153,7 +229,16 @@ async function handle(url: URL, method: string, body: any): Promise<Response> {
   const p = url.pathname.slice(url.pathname.indexOf("/api/")); const q = url.searchParams;
   const list = (k: string) => (q.get(k) ? q.get(k)!.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean) : []);
   if (p === "/api/kg/research" || p === "/api/rank") {
-    const text = String(body?.query ?? "").trim(); const m = await closest(text); const d = await load(m.file);
+    const text = String(body?.query ?? "").trim();
+    const ep = await aiEndpoint();
+    if (ep && text.length > 1) {
+      // research and rank are asked together: one retrieval + one AI call serves both
+      const k = text.toLowerCase();
+      if (!aiCache.has(k)) aiCache.set(k, aiResearch(text, ep));
+      try { const d = await aiCache.get(k)!; return json(p === "/api/rank" ? d.rank : d.research); }
+      catch (e) { aiCache.delete(k); console.warn("AI unavailable, prepared answer shown:", e); }
+    }
+    const m = await closest(text); const d = await load(m.file);
     if (p === "/api/rank") return json(d.rank);
     const r = { ...d.research, query: m.exact ? text : m.q };
     if (!m.exact) r.warnings = [`This online version answers a set of prepared questions. Closest one to “${text}”.`, ...(r.warnings ?? [])];
