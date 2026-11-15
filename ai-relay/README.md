@@ -8,6 +8,6 @@ Deploy (free plan is enough):
 1. dash.cloudflare.com → Workers & Pages → Create → Worker → name it `fire-lab-ai` → Deploy.
 2. Edit code → replace everything with `worker.js` → Deploy.
 3. Settings → Variables and secrets → Add → type **Secret**, name `ANTHROPIC_API_KEY`, value = your key → Deploy.
-4. Put the Worker URL in `frontend/public/ai.json`: `{"endpoint": "https://fire-lab-ai.<you>.workers.dev/"}` and run `publish_site.command`.
+4. Worker URL (already set in `frontend/public/ai.json`): https://fire-lab-ai.elioaparicio9.workers.dev/ — and run `publish_site.command`.
 
 Also set a monthly spend limit in the Anthropic console: the site is public.
