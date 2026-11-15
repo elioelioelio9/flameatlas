@@ -903,3 +903,4 @@ canvas.profile { width: 100%; height: auto; display: block; }
 .fly-lib button .mono { color: var(--steel); font-size: 0.64rem; }
 .fly-lib button:hover { border-color: var(--rule-strong); }
 .fly-lib button[aria-pressed="true"] { border-color: var(--ice); }
+.dm-check { max-width: 1280px; margin: 0 0 72px; } .dm-check h2 { margin: 0 0 18px; } .dm-check td:first-child { color: var(--titanium); width: 42%; }
