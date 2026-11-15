@@ -38,7 +38,7 @@ def complete(system: str, user: str, max_tokens: int = 900) -> tuple[str, str]:
         data = _post(
             "https://api.anthropic.com/v1/messages",
             {"x-api-key": settings.anthropic_api_key, "anthropic-version": "2023-06-01"},
-            {"model": settings.anthropic_model, "max_tokens": max_tokens, "temperature": 0.1, "system": system,
+            {"model": settings.anthropic_model, "max_tokens": max_tokens, "system": system,
              "messages": [{"role": "user", "content": user}]},
         )
         text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")

@@ -89,8 +89,9 @@ async function aiResearch(q: string, endpoint: string) {
   if (sources.length) {
     const r = await realFetch(endpoint, { method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ question: q, sources: sources.map((s) => ({ id: s.id, kind: s.kind, title: s.title, text: String(s.text).slice(0, 1500) })) }) });
-    const out = await r.json().catch(() => ({}));
-    if (!r.ok || !out.text) throw new Error(out.error ?? `AI relay ${r.status}`);
+    const raw = await r.text(); let out: any = {}; try { out = JSON.parse(raw); } catch { /* not json */ }
+    (window as any).__fireLabAI = { status: r.status, raw: raw.slice(0, 2000), sent: sources.length };
+    if (!r.ok || !out.text) throw new Error(out.error ?? `AI relay ${r.status}: ${raw.slice(0, 160)}`);
     let text: string = out.text; const valid = new Set(sources.map((s) => s.id)); const cited = new Set([...text.matchAll(/\[(S\d+)\]/g)].map((m) => m[1]));
     cited.forEach((c) => { if (!valid.has(c)) { text = text.split(`[${c}]`).join(""); warnings.push(`Removed an unknown citation ${c}.`); } });
     if (![...cited].some((c) => valid.has(c))) throw new Error("answer without a valid citation");

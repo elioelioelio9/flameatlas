@@ -50,11 +50,12 @@ export default {
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model, max_tokens: 900, temperature: 0.1, system: SYSTEM, messages: [{ role: "user", content: `Question: ${q}\n\nSources:\n${block}` }] }),
+      body: JSON.stringify({ model, max_tokens: 3000, system: SYSTEM, messages: [{ role: "user", content: `Question: ${q}\n\nSources:\n${block}` }] }),
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) return reply({ error: `Claude API ${r.status}: ${(data.error && data.error.message) || ""}`.slice(0, 200) }, 502, origin);
     const text = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
-    return reply({ text, model: data.model || model }, 200, origin);
+    if (!text) return reply({ error: `Claude returned no text (stop_reason: ${data.stop_reason}, blocks: ${(data.content || []).map((b) => b.type).join(",")})` }, 502, origin);
+return reply({ text, model: data.model || model }, 200, origin);
   },
 };
