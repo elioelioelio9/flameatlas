@@ -12,6 +12,7 @@ import { habitatById, roomsOf, type Box, type Furniture, type Habitat, type Vent
 import { useApp } from "../state";
 import { buildHabitatScene, buildIgnitionSource } from "./firelab/station";
 import { buildStage } from "./firelab/stage";
+import { thumb } from "./firelab/thumbs";
 import BaseView from "./firelab/BaseView";
 import { sliceMaterial, volumeMaterial } from "./firelab/shaders";
 import { cmap, cmapCss, CMAP_ID, type CMap } from "./firelab/colormaps";
@@ -40,7 +41,8 @@ const G_MARKS = [{ g: 0, label: "0 g" }, { g: 1.62, label: "Moon" }, { g: 3.71, 
 
 type SliceField = "off" | "temperature" | "o2" | "smoke" | "speed" | "vorticity" | "pressure" | "peclet";
 type Tool = "orbit" | "face" | "source" | "supply" | "return" | "object" | "remove" | "probe";
-type Display = "solid" | "wire" | "xray";
+type Display = "wire" | "xray";
+type Fly = null | "face" | "object" | "vent";
 const LIBRARY: { id: string; label: string; kind: Furniture["kind"]; size: [number, number, number] }[] = [
   { id: "rack", label: "Equipment rack", kind: "rack", size: [1.05, 2.0, 0.8] },
   { id: "locker", label: "Stowage locker", kind: "locker", size: [0.6, 1.8, 0.6] },
@@ -91,7 +93,8 @@ export default function FireLab() {
   const [objs, setObjs] = useState<Record<string, { add: Furniture[]; del: string[] }>>({});
   const [hidden, setHidden] = useState<Record<string, string[]>>({});
   const [faces, setFaces] = useState<{ id: string; label: string }[]>([]);
-  const [display, setDisplay] = useState<Display>("solid");
+  const [display, setDisplay] = useState<Display>("xray");
+  const [fly, setFly] = useState<Fly>(null);
   const [lib, setLib] = useState("rack");
   const [libRot, setLibRot] = useState(false);
   const [focus, setFocus] = useState<string | null>(null);         // "hab/zone" the camera is in, null = overview of the base
@@ -233,15 +236,16 @@ export default function FireLab() {
             <div className="lab-status mono">{status[hud.state]}</div>
             <div className="lab-tools" role="toolbar" aria-label="Tools">
               <span className="k">Tool</span>
-              {([["orbit", "Orbit"], ["face", "Hide / show a face"], ["source", "Place fire source"], ["supply", "Add supply vent"], ["return", "Add return vent"], ["object", "Add object"], ["remove", "Remove object"], ["probe", "Probe velocity"]] as [Tool, string][]).map(([t, l]) => (
-                <button key={t} aria-pressed={tool === t} onClick={() => setTool(t)}>{l}</button>
+              {([["orbit", "Orbit", null], ["face", "Walls & ceiling", "face"], ["source", "Place fire source", null], ["supply", "Add vent", "vent"], ["object", "Add object", "object"], ["remove", "Remove object", null], ["probe", "Probe velocity", null]] as [Tool, string, Fly][]).map(([t, l, f]) => (
+                <button key={t} className={f ? "has-fly" : ""} aria-pressed={tool === t || (t === "supply" && tool === "return")} aria-expanded={f ? fly === f : undefined}
+                  onClick={() => { setTool(t === "supply" && tool === "return" ? "return" : t); setFly(f && fly !== f ? f : null); }}>{l}{f && <span className="caret">›</span>}</button>
               ))}
               <span className="k">View</span>
               {([["iso", "3-D"], ["top", "Top (plan)"], ["front", "Front"], ["side", "Side"]] as [ViewName, string][]).map(([v, l]) => (
                 <button key={v} onClick={() => { if (v === "top" && sec === "off") { setSec("y"); setSecPos(0.7); } api.current?.view(v); }}>{l}</button>
               ))}
               <span className="k">Display</span>
-              <div className="sec disp">{([["solid", "Solid"], ["wire", "Wire"], ["xray", "X-ray"]] as [Display, string][]).map(([d, l]) => <button key={d} aria-pressed={display === d} onClick={() => setDisplay(d)}>{l}</button>)}</div>
+              <div className="sec disp">{([["xray", "X-ray"], ["wire", "Wireframe"]] as [Display, string][]).map(([d, l]) => <button key={d} aria-pressed={display === d} onClick={() => setDisplay(d)}>{l}</button>)}</div>
               <span className="k">Section</span>
               <div className="sec">{(["off", "x", "y", "z"] as SecAxis[]).map((a) => <button key={a} aria-pressed={sec === a} onClick={() => setSec(a)}>{a === "off" ? "None" : a}</button>)}</div>
               {sec !== "off" && <>
@@ -249,6 +253,32 @@ export default function FireLab() {
                 <button onClick={() => setSecFlip(!secFlip)}>Flip side</button>
               </>}
             </div>
+            {fly && (
+              <div className={`lab-fly fly-${fly}`} role="dialog" aria-label={fly === "face" ? "Walls and ceiling" : fly === "object" ? "Object library" : "Vents"}>
+                <div className="fly-h"><span>{fly === "face" ? "Walls & ceiling" : fly === "object" ? "Object library" : "Vents"}</span><button onClick={() => setFly(null)} aria-label="Close">×</button></div>
+                {fly === "face" && <>
+                  <p className="fly-note">Untick a face to remove it from the view, or click it in the room. Lights and vents on it go with it.</p>
+                  <div className="fly-faces">{faces.map((f) => <label key={f.id} className="check"><input type="checkbox" checked={!(hiddenNow ?? []).includes(f.id)} onChange={() => toggleFace(f.id)} />{f.label}</label>)}</div>
+                  <div className="fly-row"><button onClick={() => setHidden((h) => ({ ...h, [habId]: [] }))}>Show all</button><button onClick={() => setHidden((h) => ({ ...h, [habId]: faces.filter((f) => f.id !== "floor").map((f) => f.id) }))}>Floor only</button></div>
+                </>}
+                {fly === "object" && <>
+                  <div className="fly-lib">{LIBRARY.map((o) => (
+                    <button key={o.id} aria-pressed={lib === o.id} onClick={() => { setLib(o.id); setTool("object"); }}>
+                      <img src={thumb(o.id)} alt="" width={160} height={120} />
+                      <span>{o.label}</span><span className="mono">{(libRot ? [o.size[2], o.size[1], o.size[0]] : o.size).map((v) => v.toFixed(1)).join(" × ")} m</span>
+                    </button>
+                  ))}</div>
+                  <label className="check"><input type="checkbox" checked={libRot} onChange={(e) => setLibRot(e.target.checked)} />Rotate 90°</label>
+                  <p className="fly-note">Click the floor or a deck to place it. The simulation restarts with the new room. {custom.add.length} added, {custom.del.length} removed.</p>
+                  {(custom.add.length > 0 || custom.del.length > 0) && <div className="fly-row"><button onClick={() => setObjs((o) => ({ ...o, [habId]: { add: [], del: [] } }))}>Restore original furniture</button></div>}
+                </>}
+                {fly === "vent" && <>
+                  <div className="fly-row"><button aria-pressed={tool === "supply"} onClick={() => setTool("supply")}>Supply (air in)</button><button aria-pressed={tool === "return"} onClick={() => setTool("return")}>Return (air out)</button></div>
+                  <p className="fly-note">Click a wall, the floor or the ceiling of the room. The vent is 4 × 4 cells; the fan speed is set under Environment.</p>
+                  {extra.length > 0 ? <ul className="vent-list">{extra.map((v) => <li key={v.id}><span>{v.label}</span><button className="tlink small" onClick={() => removeVent(v.id)}>Remove</button></li>)}</ul> : <p className="fly-note">No vent added yet.</p>}
+                </>}
+              </div>
+            )}
             {(fd || vectors) && (
               <div className="cmap-legend">
                 {fd && <>
@@ -276,24 +306,11 @@ export default function FireLab() {
 
             <p className="small faint">{hab.note}</p>
 
-            <h2 className="col-h">Room</h2>
-            <div className="checks faces">
-              {faces.map((f) => <label key={f.id} className="check"><input type="checkbox" checked={!(hiddenNow ?? []).includes(f.id)} onChange={() => toggleFace(f.id)} />{f.label}</label>)}
-            </div>
-            {(tool === "object" || custom.add.length > 0 || custom.del.length > 0) && <>
-              <label className="row-select"><span>Object to add</span>
-                <select value={lib} onChange={(e) => { setLib(e.target.value); setTool("object"); }}>{LIBRARY.map((o) => <option key={o.id} value={o.id}>{o.label} ({o.size.map((v) => v.toFixed(1)).join(" × ")} m)</option>)}</select>
-              </label>
-              <label className="check"><input type="checkbox" checked={libRot} onChange={(e) => setLibRot(e.target.checked)} />Rotate 90°</label>
-              {(custom.add.length > 0 || custom.del.length > 0) && <p className="small faint">{custom.add.length} added, {custom.del.length} removed. <button className="tlink small inline" onClick={() => setObjs((o) => ({ ...o, [habId]: { add: [], del: [] } }))}>Restore the original furniture</button></p>}
-            </>}
-
             <h2 className="col-h">Environment</h2>
             <label className="range"><span>Gravity <b className="mono">{gLabel}</b></span><input type="range" min={0} max={30} step={0.01} value={g} onChange={(e) => setG(Number(e.target.value))} /></label>
             <div className="seg marks">{G_MARKS.map((m) => <button key={m.label} aria-pressed={Math.abs(g - m.g) < 0.01} onClick={() => setG(m.g)}>{m.label}</button>)}</div>
             <label className="range"><span>Airflow (fans) <b className="mono">{vent === 0 ? "off" : `${vent} cm/s`}</b></span><input type="range" min={0} max={50} step={1} value={vent} onChange={(e) => setVent(Number(e.target.value))} /></label>
             <label className="check"><input type="checkbox" checked={reverse} onChange={(e) => setReverse(e.target.checked)} />Reverse the airflow (swap supply and return)</label>
-            {extra.length > 0 && <ul className="vent-list">{extra.map((v) => <li key={v.id}><span>{v.label}</span><button className="tlink small" onClick={() => removeVent(v.id)}>Remove</button></li>)}</ul>}
             <label className="range"><span>Oxygen <b className="mono">{o2} %</b></span><input type="range" min={12} max={100} step={0.5} value={o2} onChange={(e) => setO2(Number(e.target.value))} /></label>
             <label className="range"><span>Cabin pressure <b className="mono">{pressure.toFixed(1)} kPa</b></span><input type="range" min={20} max={120} step={0.5} value={pressure} onChange={(e) => setPressure(Number(e.target.value))} /></label>
             <label className="range"><span>Cabin temperature <b className="mono">{ambient} °C</b></span><input type="range" min={5} max={45} step={1} value={ambient} onChange={(e) => setAmbient(Number(e.target.value))} /></label>
@@ -813,7 +830,7 @@ function Interior({ hab, onAddVent, onAddObject, onRemoveObject, onToggleFace, o
     };
 
     // ---------------- loop
-    let hiddenKey = "", dispKey: Display = "solid", dispT = 0;
+    let hiddenKey = "", dispKey: Display | "" = "", dispT = 0;
     let raf = 0, last = performance.now(), hudT = 0, simClock = 0, wallClock = 0, envT = 0, wallPaint = 0, prevNow = performance.now();
     const DT = 0.06;
     const vfield = (x: number, y: number, z: number): [number, number, number] | null => sim.velocity(x, y, z);
@@ -885,7 +902,7 @@ function Interior({ hab, onAddVent, onAddObject, onRemoveObject, onToggleFace, o
 
       envT += dtw; applySection();
       const hk = live.current.hidden.join(","); if (hk !== hiddenKey) { hiddenKey = hk; habScene.setHidden(live.current.hidden); }
-      if (live.current.display !== dispKey || (dispKey !== "solid" && now - dispT > 600)) { dispKey = live.current.display; dispT = now; habScene.setDisplay(dispKey); } const flightLast = prevNow; prevNow = now;
+      if (live.current.display !== dispKey || now - dispT > 600) { dispKey = live.current.display; dispT = now; habScene.setDisplay(live.current.display); } const flightLast = prevNow; prevNow = now;
       stepWalls(simDt); wallMesh.visible = Lv.wallHeat; if (Lv.wallHeat && now - wallPaint > 200) { wallPaint = now; paintWalls(); }
       if (flight) {
         flight.t = Math.min(1, flight.t + Math.min(0.3, (now - flightLast) / 1000) / 1.2); const e = flight.t < 0.5 ? 4 * flight.t ** 3 : 1 - (-2 * flight.t + 2) ** 3 / 2;
